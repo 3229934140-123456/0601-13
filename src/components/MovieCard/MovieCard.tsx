@@ -57,9 +57,9 @@ export function MovieCard({ movie, onClick, onEdit, className }: MovieCardProps)
           </div>
         )}
 
-        {movie.rewatchCount > 0 && (
+        {movie.watchLogs.length > 1 && (
           <div className="absolute bottom-2 right-2 px-2 py-0.5 rounded bg-amber-500/20 text-amber-400 text-xs font-medium">
-            重看 {movie.rewatchCount + 1} 遍
+            看过 {movie.watchLogs.length} 遍
           </div>
         )}
 

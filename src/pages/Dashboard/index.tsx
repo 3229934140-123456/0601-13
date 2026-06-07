@@ -1,10 +1,10 @@
 import { useMemo } from 'react';
 import { useStore } from '@/store/useStore';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { Film, Star, Clock, Award, TrendingUp, User, Users } from 'lucide-react';
+import { Film, Star, Clock, Award, TrendingUp, User, Users, Plus, Minus, X } from 'lucide-react';
 
 export function DashboardPage() {
-  const { movies, quotes, rankings } = useStore();
+  const { movies, quotes, rankings, addRewatch, removeLastRewatch, removeAllWatchLogs } = useStore();
 
   const watchedMovies = useMemo(() => {
     return movies.filter((m) => m.status === 'watched');
@@ -15,7 +15,8 @@ export function DashboardPage() {
     const avgRating = watchedMovies.length > 0
       ? watchedMovies.reduce((sum, m) => sum + m.rating, 0) / watchedMovies.length
       : 0;
-    const rewatchTotal = watchedMovies.reduce((sum, m) => sum + m.rewatchCount, 0);
+    const totalWatchLogs = movies.reduce((sum, m) => sum + m.watchLogs.length, 0);
+    const rewatchTotal = Math.max(0, totalWatchLogs - watchedMovies.length);
 
     return {
       total: movies.length,
@@ -24,6 +25,7 @@ export function DashboardPage() {
       avgRating: avgRating.toFixed(1),
       totalRuntime: Math.round(totalRuntime / 60),
       rewatchTotal,
+      totalWatchLogs,
       quotesCount: quotes.length,
       rankingsCount: rankings.length,
     };
@@ -48,11 +50,13 @@ export function DashboardPage() {
     
     for (let i = 0; i < 12; i++) {
       const monthKey = `${year}-${String(i + 1).padStart(2, '0')}`;
-      const count = watchedMovies.filter((m) => m.watchDate?.startsWith(monthKey)).length;
+      const count = movies.reduce((sum, m) => {
+        return sum + m.watchLogs.filter((log) => log.date.startsWith(monthKey)).length;
+      }, 0);
       months.push({ month: `${i + 1}月`, count });
     }
     return months;
-  }, [watchedMovies]);
+  }, [movies]);
 
   const directorStats = useMemo(() => {
     const directorMap = new Map<string, number>();
@@ -93,8 +97,8 @@ export function DashboardPage() {
 
   const rewatchMovies = useMemo(() => {
     return movies
-      .filter((m) => m.rewatchCount > 0)
-      .sort((a, b) => b.rewatchCount - a.rewatchCount)
+      .filter((m) => m.watchLogs.length > 1)
+      .sort((a, b) => b.watchLogs.length - a.watchLogs.length)
       .slice(0, 5);
   }, [movies]);
 
@@ -143,7 +147,7 @@ export function DashboardPage() {
             <span className="text-xs text-film-500">重看次数</span>
           </div>
           <p className="text-3xl font-bold text-gold-gradient">{stats.rewatchTotal}</p>
-          <p className="text-xs text-film-400 mt-1">共 {rewatchMovies.length} 部影片</p>
+          <p className="text-xs text-film-400 mt-1">共 {rewatchMovies.length} 部影片 · {stats.totalWatchLogs} 次观看</p>
         </div>
       </div>
 
@@ -168,7 +172,7 @@ export function DashboardPage() {
                   }}
                   cursor={{ fill: 'rgba(212, 175, 55, 0.1)' }}
                 />
-                <Bar dataKey="count" name="观影数" fill="#D4AF37" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="count" name="观看次数" fill="#D4AF37" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -286,7 +290,7 @@ export function DashboardPage() {
           <h3 className="text-base font-semibold text-white mb-4">重看片单</h3>
           <div className="space-y-3">
             {rewatchMovies.map((movie) => (
-              <div key={movie.id} className="flex items-center gap-3 p-2 rounded-lg bg-[#1a1a24]">
+              <div key={movie.id} className="flex items-center gap-3 p-2 rounded-lg bg-[#1a1a24] group">
                 {movie.poster ? (
                   <img src={movie.poster} alt={movie.title} className="w-10 h-14 object-cover rounded" />
                 ) : (
@@ -296,9 +300,36 @@ export function DashboardPage() {
                   <p className="text-sm font-medium text-white truncate">{movie.title}</p>
                   <p className="text-xs text-film-400">{movie.director}</p>
                 </div>
-                <div className="text-right">
-                  <p className="text-amber-400 font-bold">+{movie.rewatchCount}</p>
-                  <p className="text-xs text-film-500">次重看</p>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => removeLastRewatch(movie.id)}
+                    title="减少一次重看"
+                    className="p-1.5 rounded bg-[#252530] text-film-400 hover:text-red-400 hover:bg-red-500/20 transition-colors opacity-0 group-hover:opacity-100"
+                  >
+                    <Minus className="w-3 h-3" />
+                  </button>
+                  <div className="text-center min-w-[40px]">
+                    <p className="text-amber-400 font-bold text-sm">{movie.watchLogs.length}</p>
+                    <p className="text-xs text-film-500">次观看</p>
+                  </div>
+                  <button
+                    onClick={() => addRewatch(movie.id)}
+                    title="增加一次重看"
+                    className="p-1.5 rounded bg-[#252530] text-film-400 hover:text-amber-400 hover:bg-amber-500/20 transition-colors opacity-0 group-hover:opacity-100"
+                  >
+                    <Plus className="w-3 h-3" />
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (confirm('确定要将这部影片移出自重看片单吗？将保留首次观看记录。')) {
+                        removeAllWatchLogs(movie.id);
+                      }
+                    }}
+                    title="移出自重看片单"
+                    className="p-1.5 rounded bg-[#252530] text-film-400 hover:text-red-400 hover:bg-red-500/20 transition-colors opacity-0 group-hover:opacity-100 ml-1"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
                 </div>
               </div>
             ))}

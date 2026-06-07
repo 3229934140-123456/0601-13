@@ -1,31 +1,39 @@
 import { useState, useMemo } from 'react';
 import { useStore } from '@/store/useStore';
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Film, TrendingUp } from 'lucide-react';
-import { Movie } from '@/types';
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Film, TrendingUp, Plus, Search, X } from 'lucide-react';
+import { Movie, WatchLog } from '@/types';
+import { Modal } from '@/components/Modal/Modal';
 
 export function CalendarPage() {
-  const { movies } = useStore();
+  const { movies, addWatchLog, deleteWatchLog } = useStore();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'month' | 'heatmap'>('month');
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
-  const watchedMovies = useMemo(() => {
-    return movies.filter((m) => m.status === 'watched' && m.watchDate);
+  const allWatchLogs = useMemo(() => {
+    const logs: WatchLog[] = [];
+    movies.forEach((movie) => {
+      movie.watchLogs.forEach((log) => logs.push(log));
+    });
+    return logs;
   }, [movies]);
 
-  const watchDateMap = useMemo(() => {
-    const map = new Map<string, Movie[]>();
-    watchedMovies.forEach((movie) => {
-      if (movie.watchDate) {
-        const date = movie.watchDate;
-        if (!map.has(date)) {
-          map.set(date, []);
-        }
-        map.get(date)!.push(movie);
+  const watchLogMap = useMemo(() => {
+    const map = new Map<string, WatchLog[]>();
+    allWatchLogs.forEach((log) => {
+      if (!map.has(log.date)) {
+        map.set(log.date, []);
       }
+      map.get(log.date)!.push(log);
     });
     return map;
-  }, [watchedMovies]);
+  }, [allWatchLogs]);
+
+  const getMovieById = (movieId: string): Movie | undefined => {
+    return movies.find((m) => m.id === movieId);
+  };
 
   const monthStats = useMemo(() => {
     const year = currentDate.getFullYear();
@@ -33,24 +41,35 @@ export function CalendarPage() {
     const monthKey = `${year}-${String(month + 1).padStart(2, '0')}`;
     
     let count = 0;
-    watchDateMap.forEach((movies, date) => {
+    watchLogMap.forEach((logs, date) => {
       if (date.startsWith(monthKey)) {
-        count += movies.length;
+        count += logs.length;
       }
     });
     return count;
-  }, [currentDate, watchDateMap]);
+  }, [currentDate, watchLogMap]);
 
   const yearStats = useMemo(() => {
     const year = currentDate.getFullYear();
     let count = 0;
-    watchDateMap.forEach((movies, date) => {
+    watchLogMap.forEach((logs, date) => {
       if (date.startsWith(String(year))) {
-        count += movies.length;
+        count += logs.length;
       }
     });
     return count;
-  }, [currentDate, watchDateMap]);
+  }, [currentDate, watchLogMap]);
+
+  const uniqueWatchedMovies = useMemo(() => {
+    const year = currentDate.getFullYear();
+    const movieIds = new Set<string>();
+    allWatchLogs.forEach((log) => {
+      if (log.date.startsWith(String(year))) {
+        movieIds.add(log.movieId);
+      }
+    });
+    return movieIds.size;
+  }, [currentDate, allWatchLogs]);
 
   const calendarDays = useMemo(() => {
     const year = currentDate.getFullYear();
@@ -81,8 +100,8 @@ export function CalendarPage() {
     
     for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
       const dateStr = d.toISOString().split('T')[0];
-      const movies = watchDateMap.get(dateStr) || [];
-      const count = movies.length;
+      const logs = watchLogMap.get(dateStr) || [];
+      const count = logs.length;
       let level = 0;
       if (count > 0) level = 1;
       if (count >= 2) level = 2;
@@ -93,7 +112,7 @@ export function CalendarPage() {
     }
     
     return data;
-  }, [currentDate, watchDateMap]);
+  }, [currentDate, watchLogMap]);
 
   const prevMonth = () => {
     setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
@@ -106,7 +125,7 @@ export function CalendarPage() {
   const monthNames = ['一月', '二月', '三月', '四月', '五月', '六月', '七月', '八月', '九月', '十月', '十一月', '十二月'];
   const weekDays = ['日', '一', '二', '三', '四', '五', '六'];
 
-  const selectedMovies = selectedDate ? watchDateMap.get(selectedDate) || [] : [];
+  const selectedLogs = selectedDate ? watchLogMap.get(selectedDate) || [] : [];
 
   const levelColors = [
     'bg-[#1a1a24]',
@@ -116,6 +135,30 @@ export function CalendarPage() {
     'bg-amber-400/80',
   ];
 
+  const watchedMoviesForAdd = useMemo(() => {
+    return movies
+      .filter((m) => m.status === 'watched' || m.status === 'watching')
+      .filter((m) => {
+        if (!searchQuery.trim()) return true;
+        return (
+          m.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          m.director.toLowerCase().includes(searchQuery.toLowerCase())
+        );
+      })
+      .sort((a, b) => a.title.localeCompare(b.title));
+  }, [movies, searchQuery]);
+
+  const handleAddWatchLog = (movieId: string) => {
+    if (!selectedDate) return;
+    addWatchLog(movieId, selectedDate);
+  };
+
+  const handleDeleteLog = (logId: string, movieId: string) => {
+    if (confirm('确定删除这条观影记录吗？')) {
+      deleteWatchLog(movieId, logId);
+    }
+  };
+
   return (
     <div className="h-full flex flex-col">
       <div className="flex items-center justify-between mb-6">
@@ -124,7 +167,7 @@ export function CalendarPage() {
             观影日历
           </h1>
           <p className="text-sm text-film-400 mt-1">
-            {currentDate.getFullYear()} 年已观看 {yearStats} 部影片
+            {currentDate.getFullYear()} 年共观看 {yearStats} 次 · {uniqueWatchedMovies} 部影片
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -155,15 +198,15 @@ export function CalendarPage() {
 
       <div className="grid grid-cols-3 gap-4 mb-6">
         <div className="p-4 bg-[#15151c] rounded-xl border border-[#252530]">
-          <p className="text-sm text-film-400 mb-1">本月观影</p>
+          <p className="text-sm text-film-400 mb-1">本月观影次数</p>
           <p className="text-3xl font-bold text-gold-gradient">{monthStats}</p>
         </div>
         <div className="p-4 bg-[#15151c] rounded-xl border border-[#252530]">
-          <p className="text-sm text-film-400 mb-1">年度总计</p>
+          <p className="text-sm text-film-400 mb-1">年度总观看次数</p>
           <p className="text-3xl font-bold text-gold-gradient">{yearStats}</p>
         </div>
         <div className="p-4 bg-[#15151c] rounded-xl border border-[#252530]">
-          <p className="text-sm text-film-400 mb-1">月均观影</p>
+          <p className="text-sm text-film-400 mb-1">月均观影次数</p>
           <p className="text-3xl font-bold text-gold-gradient">
             {Math.round(yearStats / Math.max(currentDate.getMonth() + 1, 1))}
           </p>
@@ -206,8 +249,8 @@ export function CalendarPage() {
                 }
                 
                 const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                const dayMovies = watchDateMap.get(dateStr) || [];
-                const hasMovies = dayMovies.length > 0;
+                const dayLogs = watchLogMap.get(dateStr) || [];
+                const hasLogs = dayLogs.length > 0;
                 const isSelected = selectedDate === dateStr;
                 const isToday = dateStr === new Date().toISOString().split('T')[0];
 
@@ -218,17 +261,20 @@ export function CalendarPage() {
                     className={`aspect-square rounded-lg flex flex-col items-center justify-center text-sm transition-all relative ${
                       isSelected
                         ? 'bg-amber-500 text-black font-bold'
-                        : hasMovies
+                        : hasLogs
                         ? 'bg-amber-500/20 text-amber-400 hover:bg-amber-500/30'
                         : 'text-film-400 hover:bg-[#1a1a24]'
                     } ${isToday && !isSelected ? 'ring-2 ring-amber-500/50' : ''}`}
                   >
                     <span>{day}</span>
-                    {hasMovies && (
+                    {hasLogs && (
                       <div className="flex gap-0.5 mt-0.5">
-                        {dayMovies.slice(0, 3).map((_, i) => (
+                        {dayLogs.slice(0, 3).map((_, i) => (
                           <div key={i} className={`w-1 h-1 rounded-full ${isSelected ? 'bg-black' : 'bg-amber-500'}`} />
                         ))}
+                        {dayLogs.length > 3 && (
+                          <span className={`text-[8px] ${isSelected ? 'text-black/70' : 'text-amber-500/70'}`}>+{dayLogs.length - 3}</span>
+                        )}
                       </div>
                     )}
                   </button>
@@ -237,33 +283,73 @@ export function CalendarPage() {
             </div>
           </div>
 
-          <div className="w-72 bg-[#15151c] rounded-xl border border-[#252530] p-4 overflow-y-auto">
-            <h3 className="text-sm font-medium text-film-300 mb-3">
-              {selectedDate ? `${selectedDate} 观影记录` : '选择日期查看详情'}
-            </h3>
-            {selectedDate && selectedMovies.length > 0 ? (
-              <div className="space-y-3">
-                {selectedMovies.map((movie) => (
-                  <div key={movie.id} className="flex gap-3 p-2 rounded-lg bg-[#1a1a24]">
-                    {movie.poster ? (
-                      <img src={movie.poster} alt={movie.title} className="w-12 h-16 object-cover rounded" />
-                    ) : (
-                      <div className="w-12 h-16 bg-[#252530] rounded flex items-center justify-center">
-                        <Film className="w-6 h-6 text-film-500" />
+          <div className="w-72 bg-[#15151c] rounded-xl border border-[#252530] p-4 overflow-y-auto flex flex-col">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-medium text-film-300">
+                {selectedDate ? `${selectedDate} 观影记录` : '选择日期查看详情'}
+              </h3>
+              {selectedDate && (
+                <button
+                  onClick={() => setShowAddModal(true)}
+                  className="p-1.5 rounded bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+            
+            {selectedDate && selectedLogs.length > 0 ? (
+              <div className="space-y-3 flex-1 overflow-y-auto">
+                {[...selectedLogs]
+                  .sort((a, b) => {
+                    const movieA = getMovieById(a.movieId);
+                    const movieB = getMovieById(b.movieId);
+                    return (movieA?.title || '').localeCompare(movieB?.title || '');
+                  })
+                  .map((log) => {
+                    const movie = getMovieById(log.movieId);
+                    if (!movie) return null;
+                    
+                    const watchCount = movie.watchLogs.length;
+                    
+                    return (
+                      <div key={log.id} className="flex gap-3 p-2 rounded-lg bg-[#1a1a24] group">
+                        {movie.poster ? (
+                          <img src={movie.poster} alt={movie.title} className="w-12 h-16 object-cover rounded" />
+                        ) : (
+                          <div className="w-12 h-16 bg-[#252530] rounded flex items-center justify-center">
+                            <Film className="w-6 h-6 text-film-500" />
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-white truncate">{movie.title}</p>
+                          <p className="text-xs text-film-400">{movie.year} · {movie.director}</p>
+                          <p className="text-xs text-amber-400 mt-0.5">★ {movie.rating}</p>
+                          {watchCount > 1 && (
+                            <span className="inline-block mt-1 px-1.5 py-0.5 text-[10px] bg-amber-500/20 text-amber-400 rounded">
+                              第 {movie.watchLogs.findIndex(l => l.id === log.id) + 1} 遍观看
+                            </span>
+                          )}
+                          {log.note && (
+                            <p className="text-xs text-film-400 mt-1 italic">"{log.note}"</p>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => handleDeleteLog(log.id, movie.id)}
+                          className="p-1 text-film-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity self-start"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
                       </div>
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-white truncate">{movie.title}</p>
-                      <p className="text-xs text-film-400">{movie.year} · {movie.director}</p>
-                      <p className="text-xs text-amber-400 mt-0.5">★ {movie.rating}</p>
-                    </div>
-                  </div>
-                ))}
+                    );
+                  })}
               </div>
             ) : (
-              <p className="text-sm text-film-500 text-center py-8">
-                {selectedDate ? '这一天没有观影记录' : '点击日历上的日期'}
-              </p>
+              <div className="flex-1 flex items-center justify-center">
+                <p className="text-sm text-film-500 text-center">
+                  {selectedDate ? '这一天没有观影记录\n点击 + 添加记录' : '点击日历上的日期'}
+                </p>
+              </div>
             )}
           </div>
         </div>
@@ -285,18 +371,18 @@ export function CalendarPage() {
             
             <div className="grid grid-cols-[repeat(53,1fr)] gap-1">
               {Array.from({ length: 7 }).map((_, row) => (
-                <>
+                <div key={row}>
                   {heatmapData
                     .filter((_, i) => i % 7 === row)
                     .map((day) => (
                       <div
                         key={day.date}
-                        title={`${day.date}: ${day.count} 部`}
+                        title={`${day.date}: ${day.count} 次观看`}
                         className={`aspect-square rounded-sm ${levelColors[day.level]} hover:ring-2 hover:ring-amber-500/50 cursor-pointer`}
                         onClick={() => { setSelectedDate(day.date); setViewMode('month'); }}
                       />
                     ))}
-                </>
+                </div>
               ))}
             </div>
 
@@ -308,6 +394,71 @@ export function CalendarPage() {
           </div>
         </div>
       )}
+
+      <Modal
+        isOpen={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        title={`添加观影记录 - ${selectedDate}`}
+        size="lg"
+      >
+        <div className="space-y-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-film-500" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="搜索影片..."
+              className="w-full pl-10 pr-4 py-2.5 bg-[#1a1a24] border border-[#2a2a35] rounded-lg text-white text-sm"
+            />
+          </div>
+
+          <div className="max-h-96 overflow-y-auto space-y-2">
+            {watchedMoviesForAdd.map((movie) => {
+              const alreadyLoggedToday = movie.watchLogs.some((log) => log.date === selectedDate);
+              const watchCount = movie.watchLogs.length;
+              
+              return (
+                <div
+                  key={movie.id}
+                  className={`flex items-center gap-3 p-2 rounded-lg transition-colors ${
+                    alreadyLoggedToday ? 'bg-amber-500/10 border border-amber-500/30' : 'bg-[#1a1a24] hover:bg-[#252530]'
+                  }`}
+                >
+                  {movie.poster ? (
+                    <img src={movie.poster} alt={movie.title} className="w-10 h-14 object-cover rounded" />
+                  ) : (
+                    <div className="w-10 h-14 bg-[#252530] rounded" />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-white truncate">{movie.title}</p>
+                    <p className="text-xs text-film-400">{movie.year} · {movie.director}</p>
+                    {watchCount > 0 && (
+                      <p className="text-xs text-amber-400 mt-0.5">已看过 {watchCount} 次</p>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => handleAddWatchLog(movie.id)}
+                    disabled={alreadyLoggedToday}
+                    className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                      alreadyLoggedToday
+                        ? 'bg-film-500/20 text-film-500 cursor-not-allowed'
+                        : 'bg-amber-500/20 text-amber-400 hover:bg-amber-500/30'
+                    }`}
+                  >
+                    {alreadyLoggedToday ? '已添加' : '添加'}
+                  </button>
+                </div>
+              );
+            })}
+            {watchedMoviesForAdd.length === 0 && (
+              <p className="text-center text-film-500 py-8 text-sm">
+                {searchQuery ? '没有找到匹配的影片' : '暂无在看/已看影片'}
+              </p>
+            )}
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

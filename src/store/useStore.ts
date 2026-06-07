@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { Movie, Ranking, Quote, AppSettings, WatchStatus } from '@/types';
+import { Movie, Ranking, Quote, AppSettings, WatchStatus, WatchLog } from '@/types';
 import { mockMovies, mockRankings, mockQuotes, mockSettings } from '@/utils/mock';
 import { nanoid } from 'nanoid';
 
@@ -9,25 +9,41 @@ interface AppState {
   rankings: Ranking[];
   quotes: Quote[];
   settings: AppSettings;
-  addMovie: (movie: Omit<Movie, 'id' | 'createdAt' | 'updatedAt' | 'rewatchCount'>) => void;
+
+  addMovie: (movie: Omit<Movie, 'id' | 'createdAt' | 'updatedAt' | 'watchLogs'> & { watchDate?: string }) => void;
   updateMovie: (id: string, updates: Partial<Movie>) => void;
   deleteMovie: (id: string) => void;
+  getRewatchCount: (movieId: string) => number;
+  getLatestWatchDate: (movieId: string) => string | undefined;
+
+  addWatchLog: (movieId: string, date: string, note?: string) => void;
+  updateWatchLog: (movieId: string, logId: string, updates: Partial<WatchLog>) => void;
+  deleteWatchLog: (movieId: string, logId: string) => void;
+  addRewatch: (movieId: string, date?: string, note?: string) => void;
+  removeLastRewatch: (movieId: string) => void;
+  removeAllWatchLogs: (movieId: string) => void;
+
   addRanking: (ranking: Omit<Ranking, 'id' | 'createdAt' | 'updatedAt' | 'movieIds'>) => void;
   updateRanking: (id: string, updates: Partial<Ranking>) => void;
   deleteRanking: (id: string) => void;
   reorderRankingMovies: (rankingId: string, movieIds: string[]) => void;
   addMovieToRanking: (rankingId: string, movieId: string) => void;
   removeMovieFromRanking: (rankingId: string, movieId: string) => void;
+  batchAddToRanking: (rankingId: string, movieIds: string[]) => void;
+  generateYearlyTop: (year: number, count?: number) => string[];
+
   addQuote: (quote: Omit<Quote, 'id' | 'createdAt'>) => void;
   updateQuote: (id: string, updates: Partial<Quote>) => void;
   deleteQuote: (id: string) => void;
+
   updateSettings: (updates: Partial<AppSettings>) => void;
-  importMovies: (movies: Omit<Movie, 'id' | 'createdAt' | 'updatedAt'>[]) => void;
+
+  importMovies: (movies: Array<Omit<Movie, 'id' | 'createdAt' | 'updatedAt' | 'watchLogs'> & { watchDate?: string }>) => void;
   exportData: () => string;
   importData: (data: string) => void;
   resetData: () => void;
+
   updateWatchStatus: (movieId: string, status: WatchStatus, watchDate?: string) => void;
-  incrementRewatch: (movieId: string) => void;
 }
 
 export const useStore = create<AppState>()(
@@ -38,15 +54,36 @@ export const useStore = create<AppState>()(
       quotes: mockQuotes,
       settings: mockSettings,
 
+      getRewatchCount: (movieId) => {
+        const movie = get().movies.find((m) => m.id === movieId);
+        return movie ? Math.max(0, movie.watchLogs.length - 1) : 0;
+      },
+
+      getLatestWatchDate: (movieId) => {
+        const movie = get().movies.find((m) => m.id === movieId);
+        if (!movie || movie.watchLogs.length === 0) return undefined;
+        return [...movie.watchLogs].sort((a, b) => b.date.localeCompare(a.date))[0].date;
+      },
+
       addMovie: (movieData) => {
         const now = new Date().toISOString();
+        const watchLogs: WatchLog[] = [];
+        if (movieData.watchDate) {
+          watchLogs.push({
+            id: nanoid(),
+            movieId: '',
+            date: movieData.watchDate,
+            createdAt: now,
+          });
+        }
         const newMovie: Movie = {
           ...movieData,
           id: nanoid(),
-          rewatchCount: 0,
+          watchLogs,
           createdAt: now,
           updatedAt: now,
         };
+        newMovie.watchLogs = newMovie.watchLogs.map((log) => ({ ...log, movieId: newMovie.id }));
         set((state) => ({ movies: [newMovie, ...state.movies] }));
       },
 
@@ -66,6 +103,93 @@ export const useStore = create<AppState>()(
             ...r,
             movieIds: r.movieIds.filter((mid) => mid !== id),
           })),
+        }));
+      },
+
+      addWatchLog: (movieId, date, note) => {
+        const now = new Date().toISOString();
+        const newLog: WatchLog = {
+          id: nanoid(),
+          movieId,
+          date,
+          note,
+          createdAt: now,
+        };
+        set((state) => ({
+          movies: state.movies.map((m) =>
+            m.id === movieId
+              ? {
+                  ...m,
+                  watchLogs: [...m.watchLogs, newLog].sort((a, b) => a.date.localeCompare(b.date)),
+                  status: 'watched' as WatchStatus,
+                  updatedAt: now,
+                }
+              : m
+          ),
+        }));
+      },
+
+      updateWatchLog: (movieId, logId, updates) => {
+        set((state) => ({
+          movies: state.movies.map((m) =>
+            m.id === movieId
+              ? {
+                  ...m,
+                  watchLogs: m.watchLogs.map((log) =>
+                    log.id === logId ? { ...log, ...updates } : log
+                  ),
+                  updatedAt: new Date().toISOString(),
+                }
+              : m
+          ),
+        }));
+      },
+
+      deleteWatchLog: (movieId, logId) => {
+        set((state) => ({
+          movies: state.movies.map((m) =>
+            m.id === movieId
+              ? {
+                  ...m,
+                  watchLogs: m.watchLogs.filter((log) => log.id !== logId),
+                  updatedAt: new Date().toISOString(),
+                }
+              : m
+          ),
+        }));
+      },
+
+      addRewatch: (movieId, date, note) => {
+        const watchDate = date || new Date().toISOString().split('T')[0];
+        get().addWatchLog(movieId, watchDate, note || `第${get().getRewatchCount(movieId) + 2}次观看`);
+      },
+
+      removeLastRewatch: (movieId) => {
+        const movie = get().movies.find((m) => m.id === movieId);
+        if (!movie || movie.watchLogs.length <= 1) return;
+        
+        const sortedLogs = [...movie.watchLogs].sort((a, b) => b.date.localeCompare(a.date));
+        const lastLogId = sortedLogs[0].id;
+        get().deleteWatchLog(movieId, lastLogId);
+      },
+
+      removeAllWatchLogs: (movieId) => {
+        const movie = get().movies.find((m) => m.id === movieId);
+        if (!movie || movie.watchLogs.length <= 1) return;
+        
+        const sortedLogs = [...movie.watchLogs].sort((a, b) => a.date.localeCompare(b.date));
+        const firstLogId = sortedLogs[0].id;
+        
+        set((state) => ({
+          movies: state.movies.map((m) =>
+            m.id === movieId
+              ? {
+                  ...m,
+                  watchLogs: m.watchLogs.filter((log) => log.id === firstLogId),
+                  updatedAt: new Date().toISOString(),
+                }
+              : m
+          ),
         }));
       },
 
@@ -123,6 +247,30 @@ export const useStore = create<AppState>()(
         }));
       },
 
+      batchAddToRanking: (rankingId, movieIds) => {
+        set((state) => {
+          const ranking = state.rankings.find((r) => r.id === rankingId);
+          if (!ranking) return state;
+          
+          const newIds = movieIds.filter((id) => !ranking.movieIds.includes(id));
+          return {
+            rankings: state.rankings.map((r) =>
+              r.id === rankingId
+                ? { ...r, movieIds: [...r.movieIds, ...newIds], updatedAt: new Date().toISOString() }
+                : r
+            ),
+          };
+        });
+      },
+
+      generateYearlyTop: (year, count = 10) => {
+        const watched = get().movies.filter(
+          (m) => m.status === 'watched' && m.year === year && m.rating > 0
+        );
+        const sorted = [...watched].sort((a, b) => b.rating - a.rating);
+        return sorted.slice(0, count).map((m) => m.id);
+      },
+
       addQuote: (quoteData) => {
         const newQuote: Quote = {
           ...quoteData,
@@ -152,13 +300,26 @@ export const useStore = create<AppState>()(
 
       importMovies: (moviesData) => {
         const now = new Date().toISOString();
-        const newMovies = moviesData.map((m) => ({
-          ...m,
-          id: nanoid(),
-          rewatchCount: 0,
-          createdAt: now,
-          updatedAt: now,
-        }));
+        const newMovies = moviesData.map((m) => {
+          const movie: Movie = {
+            ...m,
+            id: nanoid(),
+            watchLogs: [],
+            createdAt: now,
+            updatedAt: now,
+          };
+          if (m.watchDate) {
+            movie.watchLogs = [
+              {
+                id: nanoid(),
+                movieId: movie.id,
+                date: m.watchDate,
+                createdAt: now,
+              },
+            ];
+          }
+          return movie;
+        });
         set((state) => ({ movies: [...newMovies, ...state.movies] }));
       },
 
@@ -204,26 +365,28 @@ export const useStore = create<AppState>()(
 
       updateWatchStatus: (movieId, status, watchDate) => {
         set((state) => ({
-          movies: state.movies.map((m) =>
-            m.id === movieId
-              ? {
-                  ...m,
-                  status,
-                  watchDate: watchDate || m.watchDate,
-                  updatedAt: new Date().toISOString(),
-                }
-              : m
-          ),
-        }));
-      },
-
-      incrementRewatch: (movieId) => {
-        set((state) => ({
-          movies: state.movies.map((m) =>
-            m.id === movieId
-              ? { ...m, rewatchCount: m.rewatchCount + 1, updatedAt: new Date().toISOString() }
-              : m
-          ),
+          movies: state.movies.map((m) => {
+            if (m.id !== movieId) return m;
+            
+            let watchLogs = m.watchLogs;
+            if (status === 'watched' && watchDate && m.watchLogs.length === 0) {
+              watchLogs = [
+                {
+                  id: nanoid(),
+                  movieId,
+                  date: watchDate,
+                  createdAt: new Date().toISOString(),
+                },
+              ];
+            }
+            
+            return {
+              ...m,
+              status,
+              watchLogs,
+              updatedAt: new Date().toISOString(),
+            };
+          }),
         }));
       },
     }),

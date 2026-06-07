@@ -3,8 +3,8 @@ import { useStore } from '@/store/useStore';
 import { MovieCard } from '@/components/MovieCard/MovieCard';
 import { MovieForm } from '@/components/MovieForm/MovieForm';
 import { Modal } from '@/components/Modal/Modal';
-import { Search, Plus, Filter, Upload, X } from 'lucide-react';
-import { Movie, WatchStatus } from '@/types';
+import { Search, Plus, Filter, Upload, X, Calendar, Trash2 } from 'lucide-react';
+import { Movie, WatchStatus, WatchLog } from '@/types';
 
 const statusOptions: { value: WatchStatus | 'all'; label: string }[] = [
   { value: 'all', label: '全部' },
@@ -15,7 +15,9 @@ const statusOptions: { value: WatchStatus | 'all'; label: string }[] = [
 ];
 
 export function LibraryPage() {
-  const { movies, importMovies, deleteMovie } = useStore();
+  const { movies, importMovies, deleteMovie, addWatchLog, deleteWatchLog } = useStore();
+  const [newLogDate, setNewLogDate] = useState('');
+  const [newLogNote, setNewLogNote] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<WatchStatus | 'all'>('all');
   const [genreFilter, setGenreFilter] = useState<string>('all');
@@ -272,6 +274,65 @@ export function LibraryPage() {
                     <span className="text-amber-400 font-bold text-lg">{showDetail.rating}</span>
                   </div>
                 </div>
+              </div>
+            </div>
+
+            <div>
+              <h4 className="text-sm font-medium text-film-300 mb-3 flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-amber-400" />
+                观影记录（{showDetail.watchLogs.length} 次）
+              </h4>
+              {showDetail.watchLogs.length > 0 ? (
+                <div className="space-y-2 mb-3 max-h-40 overflow-y-auto">
+                  {[...showDetail.watchLogs]
+                    .sort((a, b) => b.date.localeCompare(a.date))
+                    .map((log) => (
+                      <div
+                        key={log.id}
+                        className="flex items-center justify-between p-2.5 bg-[#1a1a24] rounded-lg text-sm"
+                      >
+                        <div className="flex items-center gap-3">
+                          <span className="text-amber-400 font-medium">{log.date}</span>
+                          {log.note && <span className="text-film-400 text-xs">— {log.note}</span>}
+                        </div>
+                        <button
+                          onClick={() => deleteWatchLog(showDetail.id, log.id)}
+                          className="p-1 text-film-500 hover:text-red-400 transition-colors"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                </div>
+              ) : (
+                <p className="text-film-500 text-sm mb-3">暂无观影记录</p>
+              )}
+              <div className="flex gap-2">
+                <input
+                  type="date"
+                  value={newLogDate}
+                  onChange={(e) => setNewLogDate(e.target.value)}
+                  className="flex-1 px-3 py-2 bg-[#1a1a24] border border-[#2a2a35] rounded-lg text-white text-sm"
+                />
+                <input
+                  type="text"
+                  value={newLogNote}
+                  onChange={(e) => setNewLogNote(e.target.value)}
+                  placeholder="备注（可选）"
+                  className="flex-1 px-3 py-2 bg-[#1a1a24] border border-[#2a2a35] rounded-lg text-white text-sm"
+                />
+                <button
+                  onClick={() => {
+                    if (newLogDate) {
+                      addWatchLog(showDetail.id, newLogDate, newLogNote || undefined);
+                      setNewLogDate('');
+                      setNewLogNote('');
+                    }
+                  }}
+                  className="px-4 py-2 bg-amber-500/20 text-amber-400 rounded-lg hover:bg-amber-500/30 transition-colors text-sm"
+                >
+                  <Plus className="w-4 h-4" />
+                </button>
               </div>
             </div>
 

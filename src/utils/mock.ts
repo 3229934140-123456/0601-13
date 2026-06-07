@@ -1,8 +1,16 @@
-import { Movie, Ranking, Quote, AppSettings } from '@/types';
+import { Movie, Ranking, Quote, AppSettings, WatchLog } from '@/types';
 import { nanoid } from 'nanoid';
 
 const now = new Date().toISOString();
 const year = new Date().getFullYear();
+
+const createWatchLog = (movieId: string, date: string, note?: string): WatchLog => ({
+  id: nanoid(),
+  movieId,
+  date,
+  note,
+  createdAt: now,
+});
 
 export const mockMovies: Movie[] = [
   {
@@ -18,8 +26,7 @@ export const mockMovies: Movie[] = [
     country: '美国',
     rating: 9.2,
     status: 'watched',
-    watchDate: `${year}-03-15`,
-    rewatchCount: 0,
+    watchLogs: [createWatchLog('', `${year}-03-15`, '电影院IMAX')],
     shortReview: '诺兰的又一部神作，墨菲的表演令人震撼。',
     longReview: '这是一部关于人类命运的宏大叙事。诺兰用他标志性的非线性叙事，将奥本海默复杂的一生展现在观众面前...',
     createdAt: now,
@@ -38,8 +45,7 @@ export const mockMovies: Movie[] = [
     country: '美国',
     rating: 8.5,
     status: 'watched',
-    watchDate: `${year}-02-20`,
-    rewatchCount: 0,
+    watchLogs: [createWatchLog('', `${year}-02-20`)],
     shortReview: '斯科塞斯的西部史诗，沉重而深刻。',
     longReview: '这是一部关于贪婪与背叛的沉重史诗...',
     createdAt: now,
@@ -58,8 +64,10 @@ export const mockMovies: Movie[] = [
     country: '法国',
     rating: 8.8,
     status: 'watched',
-    watchDate: `${year}-04-10`,
-    rewatchCount: 1,
+    watchLogs: [
+      createWatchLog('', `${year}-04-10`, '电影节展映'),
+      createWatchLog('', `${year}-08-15`, '二刷'),
+    ],
     shortReview: '真相与谎言的边界，婚姻的解剖学。',
     longReview: '这不仅是一部法庭片，更是对婚姻关系的深度剖析...',
     createdAt: now,
@@ -78,8 +86,11 @@ export const mockMovies: Movie[] = [
     country: '美国',
     rating: 7.8,
     status: 'watched',
-    watchDate: `${year}-07-22`,
-    rewatchCount: 2,
+    watchLogs: [
+      createWatchLog('', `${year}-07-22`, '和朋友一起'),
+      createWatchLog('', `${year}-09-01`, '重看'),
+      createWatchLog('', `${year}-12-25`, '圣诞夜'),
+    ],
     shortReview: '粉色风暴下的女性主义宣言。',
     longReview: '芭比用一种轻松幽默的方式探讨了深刻的女性议题...',
     createdAt: now,
@@ -97,8 +108,10 @@ export const mockMovies: Movie[] = [
     country: '中国',
     rating: 8.3,
     status: 'watched',
-    watchDate: `${year}-01-25`,
-    rewatchCount: 1,
+    watchLogs: [
+      createWatchLog('', `${year}-01-25`, '大年初一'),
+      createWatchLog('', `${year}-02-14`, '带家人二刷'),
+    ],
     shortReview: '中国科幻的新高度。',
     longReview: '流浪地球2展现了中国科幻电影工业的成熟...',
     createdAt: now,
@@ -117,8 +130,7 @@ export const mockMovies: Movie[] = [
     country: '美国',
     rating: 9.0,
     status: 'watched',
-    watchDate: `${year}-06-05`,
-    rewatchCount: 0,
+    watchLogs: [createWatchLog('', `${year}-06-05`)],
     shortReview: '视觉盛宴，动画艺术的巅峰。',
     longReview: '这是一部重新定义动画可能性的作品...',
     createdAt: now,
@@ -137,8 +149,7 @@ export const mockMovies: Movie[] = [
     country: '美国',
     rating: 8.6,
     status: 'watched',
-    watchDate: `${year}-08-18`,
-    rewatchCount: 0,
+    watchLogs: [createWatchLog('', `${year}-08-18`)],
     shortReview: '缘分与命运的温柔探讨。',
     longReview: '一部关于命运、缘分和选择的温柔电影...',
     createdAt: now,
@@ -157,8 +168,7 @@ export const mockMovies: Movie[] = [
     country: '英国',
     rating: 8.4,
     status: 'watching',
-    watchDate: undefined,
-    rewatchCount: 0,
+    watchLogs: [],
     shortReview: undefined,
     longReview: undefined,
     createdAt: now,
@@ -177,8 +187,7 @@ export const mockMovies: Movie[] = [
     country: '日本',
     rating: 8.7,
     status: 'wish',
-    watchDate: undefined,
-    rewatchCount: 0,
+    watchLogs: [],
     shortReview: undefined,
     longReview: undefined,
     createdAt: now,
@@ -196,8 +205,7 @@ export const mockMovies: Movie[] = [
     country: '中国台湾',
     rating: 8.0,
     status: 'wish',
-    watchDate: undefined,
-    rewatchCount: 0,
+    watchLogs: [],
     shortReview: undefined,
     longReview: undefined,
     createdAt: now,
@@ -215,8 +223,7 @@ export const mockMovies: Movie[] = [
     country: '中国香港',
     rating: 8.2,
     status: 'dropped',
-    watchDate: `${year}-05-10`,
-    rewatchCount: 0,
+    watchLogs: [createWatchLog('', `${year}-05-10`, '看了一半')],
     shortReview: '题材不错但节奏稍慢。',
     longReview: undefined,
     createdAt: now,
@@ -235,8 +242,7 @@ export const mockMovies: Movie[] = [
     country: '英国',
     rating: 8.5,
     status: 'watched',
-    watchDate: `${year}-09-12`,
-    rewatchCount: 0,
+    watchLogs: [createWatchLog('', `${year}-09-12`)],
     shortReview: '荒诞又深刻的女性成长寓言。',
     longReview: '兰斯莫斯用他独特的荒诞风格讲述了一个女性觉醒的故事...',
     createdAt: now,
@@ -244,13 +250,17 @@ export const mockMovies: Movie[] = [
   },
 ];
 
+mockMovies.forEach((movie) => {
+  movie.watchLogs = movie.watchLogs.map((log) => ({ ...log, movieId: movie.id, id: nanoid() }));
+});
+
 export const mockRankings: Ranking[] = [
   {
     id: nanoid(),
     title: '2023年度十佳',
     description: '个人年度最佳影片榜单',
     isPublic: true,
-    movieIds: [],
+    movieIds: mockMovies.filter(m => m.status === 'watched').slice(0, 5).map(m => m.id),
     createdAt: now,
     updatedAt: now,
   },
@@ -259,7 +269,7 @@ export const mockRankings: Ranking[] = [
     title: '科幻片单',
     description: '值得反复观看的科幻佳作',
     isPublic: false,
-    movieIds: [],
+    movieIds: mockMovies.filter(m => m.genres.includes('科幻')).map(m => m.id),
     createdAt: now,
     updatedAt: now,
   },
@@ -268,7 +278,7 @@ export const mockRankings: Ranking[] = [
     title: '重看清单',
     description: '那些值得一看再看的电影',
     isPublic: true,
-    movieIds: [],
+    movieIds: mockMovies.filter(m => m.watchLogs.length > 1).map(m => m.id),
     createdAt: now,
     updatedAt: now,
   },

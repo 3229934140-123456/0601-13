@@ -1,8 +1,8 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import { useStore } from '@/store/useStore';
-import { Download, Image, Palette, LayoutGrid, Type, Film, Quote as QuoteIcon } from 'lucide-react';
+import { Download, Image, Palette, LayoutGrid, Type, Film, Quote as QuoteIcon, List, Repeat, Settings } from 'lucide-react';
 import html2canvas from 'html2canvas';
-import { Movie } from '@/types';
+import { Movie, CardSource, CardConfig } from '@/types';
 
 const templates = [
   { id: 'movie-grid', name: '影片九宫格', icon: LayoutGrid },
@@ -17,6 +17,12 @@ const colorSchemes = [
   { id: 'forest-dark', name: '森林墨绿', bg: 'from-[#0a1a0f] to-[#152520]', text: 'text-emerald-400', accent: 'bg-emerald-500' },
 ];
 
+const sourceOptions: { value: CardSource; label: string; icon: typeof Film }[] = [
+  { value: 'all', label: '全部已看', icon: Film },
+  { value: 'ranking', label: '指定榜单', icon: List },
+  { value: 'rewatch', label: '重看片单', icon: Repeat },
+];
+
 export function CardsPage() {
   const { movies, quotes, rankings } = useStore();
   const cardRef = useRef<HTMLDivElement>(null);
@@ -24,20 +30,59 @@ export function CardsPage() {
   const [selectedColor, setSelectedColor] = useState('gold-dark');
   const [cardTitle, setCardTitle] = useState('我的年度观影');
   const [cardSubtitle, setCardSubtitle] = useState('2024年度十佳');
-  const [selectedRanking, setSelectedRanking] = useState(rankings[0]?.id || '');
+  
+  const [cardConfig, setCardConfig] = useState<CardConfig>({
+    source: 'all',
+    rankingId: rankings[0]?.id || '',
+    showRating: true,
+    showWatchDate: false,
+    showReview: false,
+    movieCount: 9,
+  });
 
   const colorScheme = colorSchemes.find((c) => c.id === selectedColor) || colorSchemes[0];
 
-  const watchedMovies = movies.filter((m) => m.status === 'watched').slice(0, 9);
-  const selectedRankingData = rankings.find((r) => r.id === selectedRanking);
-  const rankingMovies = selectedRankingData
-    ? selectedRankingData.movieIds
-        .map((id) => movies.find((m) => m.id === id))
-        .filter((m): m is Movie => m !== undefined)
-        .slice(0, 9)
-    : [];
+  const rewatchMovies = useMemo(() => {
+    return movies
+      .filter((m) => m.watchLogs.length > 1)
+      .sort((a, b) => b.watchLogs.length - a.watchLogs.length);
+  }, [movies]);
 
+  const displayMovies = useMemo(() => {
+    let movieList: Movie[] = [];
+    
+    switch (cardConfig.source) {
+      case 'ranking':
+        const ranking = rankings.find((r) => r.id === cardConfig.rankingId);
+        if (ranking) {
+          movieList = ranking.movieIds
+            .map((id) => movies.find((m) => m.id === id))
+            .filter((m): m is Movie => m !== undefined);
+        }
+        break;
+      case 'rewatch':
+        movieList = rewatchMovies;
+        break;
+      case 'all':
+      default:
+        movieList = movies.filter((m) => m.status === 'watched');
+        break;
+    }
+    
+    return movieList.slice(0, cardConfig.movieCount || 9);
+  }, [cardConfig, movies, rankings, rewatchMovies]);
+
+  const selectedRankingData = rankings.find((r) => r.id === cardConfig.rankingId);
   const randomQuotes = quotes.slice(0, 3);
+
+  const updateConfig = (key: keyof CardConfig, value: any) => {
+    setCardConfig((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const getLatestWatchDate = (movie: Movie): string => {
+    if (movie.watchLogs.length === 0) return '';
+    return [...movie.watchLogs].sort((a, b) => b.date.localeCompare(a.date))[0].date;
+  };
 
   const handleExport = async () => {
     if (!cardRef.current) return;
@@ -61,7 +106,7 @@ export function CardsPage() {
 
   const renderMovieGrid = () => (
     <div className="grid grid-cols-3 gap-2">
-      {(selectedTemplate === 'rank-list' ? rankingMovies : watchedMovies).map((movie, index) => (
+      {displayMovies.map((movie, index) => (
         <div key={movie.id} className="relative aspect-[2/3] overflow-hidden rounded-lg group">
           {movie.poster ? (
             <img
@@ -74,19 +119,36 @@ export function CardsPage() {
               <Film className="w-8 h-8 text-white/30" />
             </div>
           )}
-          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent" />
           <div className="absolute bottom-2 left-2 right-2">
             <p className="text-white text-xs font-medium truncate">{movie.title}</p>
-            <p className={`text-[10px] ${colorScheme.text}`}>★ {movie.rating}</p>
+            {cardConfig.showRating && (
+              <p className={`text-[10px] ${colorScheme.text} mt-0.5`}>★ {movie.rating}</p>
+            )}
+            {cardConfig.showWatchDate && movie.watchLogs.length > 0 && (
+              <p className="text-[10px] text-white/60 mt-0.5">
+                {getLatestWatchDate(movie)}
+              </p>
+            )}
+            {cardConfig.showReview && movie.shortReview && (
+              <p className="text-[10px] text-white/70 mt-1 line-clamp-2 italic">
+                "{movie.shortReview}"
+              </p>
+            )}
           </div>
           {selectedTemplate === 'rank-list' && (
             <div className={`absolute top-2 left-2 w-6 h-6 ${colorScheme.accent} rounded-full flex items-center justify-center text-black text-xs font-bold`}>
               {index + 1}
             </div>
           )}
+          {cardConfig.source === 'rewatch' && movie.watchLogs.length > 1 && (
+            <div className={`absolute top-2 right-2 px-1.5 py-0.5 ${colorScheme.accent} text-black text-[10px] font-bold rounded`}>
+              {movie.watchLogs.length}刷
+            </div>
+          )}
         </div>
       ))}
-      {Array.from({ length: Math.max(0, 9 - (selectedTemplate === 'rank-list' ? rankingMovies.length : watchedMovies.length)) }).map((_, i) => (
+      {Array.from({ length: Math.max(0, (cardConfig.movieCount || 9) - displayMovies.length) }).map((_, i) => (
         <div key={`empty-${i}`} className="aspect-[2/3] bg-white/5 rounded-lg" />
       ))}
     </div>
@@ -140,7 +202,7 @@ export function CardsPage() {
       </div>
 
       <div className="flex gap-6 flex-1 min-h-0">
-        <div className="w-72 flex-shrink-0 space-y-6 overflow-y-auto">
+        <div className="w-72 flex-shrink-0 space-y-5 overflow-y-auto">
           <div>
             <h3 className="text-sm font-medium text-white mb-3 flex items-center gap-2">
               <LayoutGrid className="w-4 h-4 text-amber-400" />
@@ -166,6 +228,61 @@ export function CardsPage() {
               })}
             </div>
           </div>
+
+          {selectedTemplate !== 'quote-card' && (
+            <div>
+              <h3 className="text-sm font-medium text-white mb-3 flex items-center gap-2">
+                <List className="w-4 h-4 text-amber-400" />
+                数据来源
+              </h3>
+              <div className="space-y-2">
+                {sourceOptions.map((source) => {
+                  const Icon = source.icon;
+                  return (
+                    <button
+                      key={source.value}
+                      onClick={() => updateConfig('source', source.value)}
+                      className={`w-full flex items-center gap-3 p-2.5 rounded-lg border transition-all text-left ${
+                        cardConfig.source === source.value
+                          ? 'bg-amber-500/10 border-amber-500/50 text-amber-400'
+                          : 'bg-[#15151c] border-[#252530] text-film-300 hover:border-[#353545]'
+                      }`}
+                    >
+                      <Icon className="w-4 h-4" />
+                      <span className="text-xs">{source.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              
+              {cardConfig.source === 'ranking' && (
+                <div className="mt-3">
+                  <select
+                    value={cardConfig.rankingId}
+                    onChange={(e) => updateConfig('rankingId', e.target.value)}
+                    className="w-full px-3 py-2 bg-[#1a1a24] border border-[#2a2a35] rounded-lg text-white text-sm"
+                  >
+                    {rankings.map((r) => (
+                      <option key={r.id} value={r.id}>{r.title} ({r.movieIds.length}部)</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              
+              <div className="mt-3">
+                <label className="block text-xs text-film-400 mb-1">影片数量</label>
+                <select
+                  value={cardConfig.movieCount || 9}
+                  onChange={(e) => updateConfig('movieCount', parseInt(e.target.value))}
+                  className="w-full px-3 py-2 bg-[#1a1a24] border border-[#2a2a35] rounded-lg text-white text-sm"
+                >
+                  {[3, 6, 9, 12].map((n) => (
+                    <option key={n} value={n}>{n} 部</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
 
           <div>
             <h3 className="text-sm font-medium text-white mb-3 flex items-center gap-2">
@@ -217,21 +334,41 @@ export function CardsPage() {
             </div>
           </div>
 
-          {selectedTemplate === 'rank-list' && (
+          {selectedTemplate !== 'quote-card' && (
             <div>
               <h3 className="text-sm font-medium text-white mb-3 flex items-center gap-2">
-                <Film className="w-4 h-4 text-amber-400" />
-                选择榜单
+                <Settings className="w-4 h-4 text-amber-400" />
+                展示信息
               </h3>
-              <select
-                value={selectedRanking}
-                onChange={(e) => setSelectedRanking(e.target.value)}
-                className="w-full px-3 py-2 bg-[#1a1a24] border border-[#2a2a35] rounded-lg text-white text-sm"
-              >
-                {rankings.map((r) => (
-                  <option key={r.id} value={r.id}>{r.title}</option>
-                ))}
-              </select>
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={cardConfig.showRating}
+                    onChange={(e) => updateConfig('showRating', e.target.checked)}
+                    className="w-4 h-4 rounded border-film-500 bg-[#1a1a24] text-amber-500 focus:ring-amber-500/50"
+                  />
+                  <span className="text-sm text-film-300">显示评分</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={cardConfig.showWatchDate}
+                    onChange={(e) => updateConfig('showWatchDate', e.target.checked)}
+                    className="w-4 h-4 rounded border-film-500 bg-[#1a1a24] text-amber-500 focus:ring-amber-500/50"
+                  />
+                  <span className="text-sm text-film-300">显示观看日期</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={cardConfig.showReview}
+                    onChange={(e) => updateConfig('showReview', e.target.checked)}
+                    className="w-4 h-4 rounded border-film-500 bg-[#1a1a24] text-amber-500 focus:ring-amber-500/50"
+                  />
+                  <span className="text-sm text-film-300">显示短评</span>
+                </label>
+              </div>
             </div>
           )}
         </div>
@@ -239,7 +376,7 @@ export function CardsPage() {
         <div className="flex-1 flex items-center justify-center bg-[#0a0a0d] rounded-xl border border-[#1a1a20] p-8 overflow-auto">
           <div
             ref={cardRef}
-            className={`w-[360px] bg-gradient-to-br ${colorScheme.bg} rounded-2xl p-6 shadow-2xl`}
+            className={`w-[360px] bg-gradient-to-br ${colorScheme.bg} rounded-2xl p-6 shadow-2xl flex flex-col`}
             style={{ aspectRatio: '9/16' }}
           >
             <div className="text-center mb-4">
@@ -252,13 +389,25 @@ export function CardsPage() {
               <p className={`text-sm ${colorScheme.text} mt-1`}>
                 {cardSubtitle}
               </p>
+              {cardConfig.source === 'ranking' && selectedRankingData && (
+                <p className="text-xs text-white/50 mt-1">
+                  共 {selectedRankingData.movieIds.length} 部影片
+                </p>
+              )}
+              {cardConfig.source === 'rewatch' && (
+                <p className="text-xs text-white/50 mt-1">
+                  共 {rewatchMovies.length} 部重看影片
+                </p>
+              )}
             </div>
 
             <div className="w-full h-px bg-gradient-to-r from-transparent via-white/20 to-transparent mb-4" />
 
-            {selectedTemplate === 'quote-card' ? renderQuoteCard() : renderMovieGrid()}
+            <div className="flex-1 overflow-hidden">
+              {selectedTemplate === 'quote-card' ? renderQuoteCard() : renderMovieGrid()}
+            </div>
 
-            <div className="mt-auto pt-4">
+            <div className="pt-4">
               <div className="w-full h-px bg-gradient-to-r from-transparent via-white/20 to-transparent mb-3" />
               <div className="flex items-center justify-between text-xs">
                 <span className="text-white/40">@电影博主</span>
