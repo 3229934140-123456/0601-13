@@ -4,13 +4,44 @@ import { Movie, Ranking, Quote, AppSettings, WatchStatus, WatchLog } from '@/typ
 import { mockMovies, mockRankings, mockQuotes, mockSettings } from '@/utils/mock';
 import { nanoid } from 'nanoid';
 
+const migrateMovieData = (movie: any): Movie => {
+  if (movie.watchLogs && Array.isArray(movie.watchLogs)) {
+    return movie as Movie;
+  }
+  const watchLogs: WatchLog[] = [];
+  const now = new Date().toISOString();
+  if (movie.watchDate) {
+    watchLogs.push({
+      id: nanoid(),
+      movieId: movie.id,
+      date: movie.watchDate,
+      createdAt: now,
+    });
+  }
+  if (movie.rewatchCount && movie.rewatchCount > 0) {
+    for (let i = 0; i < movie.rewatchCount; i++) {
+      watchLogs.push({
+        id: nanoid(),
+        movieId: movie.id,
+        date: movie.watchDate || now.split('T')[0],
+        note: `第${i + 2}次观看`,
+        createdAt: now,
+      });
+    }
+  }
+  return {
+    ...movie,
+    watchLogs,
+  };
+};
+
 interface AppState {
   movies: Movie[];
   rankings: Ranking[];
   quotes: Quote[];
   settings: AppSettings;
 
-  addMovie: (movie: Omit<Movie, 'id' | 'createdAt' | 'updatedAt' | 'watchLogs'> & { watchDate?: string }) => void;
+  addMovie: (movie: Omit<Movie, 'id' | 'createdAt' | 'updatedAt' | 'watchLogs'> & { watchDate?: string; initialWatchLogs?: Array<{ date: string; note?: string }> }) => void;
   updateMovie: (id: string, updates: Partial<Movie>) => void;
   deleteMovie: (id: string) => void;
   getRewatchCount: (movieId: string) => number;
@@ -68,7 +99,17 @@ export const useStore = create<AppState>()(
       addMovie: (movieData) => {
         const now = new Date().toISOString();
         const watchLogs: WatchLog[] = [];
-        if (movieData.watchDate) {
+        if (movieData.initialWatchLogs && movieData.initialWatchLogs.length > 0) {
+          movieData.initialWatchLogs.forEach((log) => {
+            watchLogs.push({
+              id: nanoid(),
+              movieId: '',
+              date: log.date,
+              note: log.note,
+              createdAt: now,
+            });
+          });
+        } else if (movieData.watchDate) {
           watchLogs.push({
             id: nanoid(),
             movieId: '',
@@ -79,7 +120,7 @@ export const useStore = create<AppState>()(
         const newMovie: Movie = {
           ...movieData,
           id: nanoid(),
-          watchLogs,
+          watchLogs: watchLogs.sort((a, b) => a.date.localeCompare(b.date)),
           createdAt: now,
           updatedAt: now,
         };
@@ -301,22 +342,48 @@ export const useStore = create<AppState>()(
       importMovies: (moviesData) => {
         const now = new Date().toISOString();
         const newMovies = moviesData.map((m) => {
-          const movie: Movie = {
-            ...m,
-            id: nanoid(),
-            watchLogs: [],
-            createdAt: now,
-            updatedAt: now,
-          };
-          if (m.watchDate) {
-            movie.watchLogs = [
-              {
+          let movie: Movie;
+          if ((m as any).watchLogs && Array.isArray((m as any).watchLogs)) {
+            movie = {
+              ...m,
+              id: nanoid(),
+              createdAt: now,
+              updatedAt: now,
+            } as Movie;
+            movie.watchLogs = movie.watchLogs.map(log => ({
+              ...log,
+              id: log.id || nanoid(),
+              movieId: movie.id,
+              createdAt: log.createdAt || now,
+            }));
+          } else {
+            movie = {
+              ...m,
+              id: nanoid(),
+              watchLogs: [],
+              createdAt: now,
+              updatedAt: now,
+            } as Movie;
+            const legacy = m as any;
+            if (legacy.watchDate) {
+              movie.watchLogs.push({
                 id: nanoid(),
                 movieId: movie.id,
-                date: m.watchDate,
+                date: legacy.watchDate,
                 createdAt: now,
-              },
-            ];
+              });
+              if (legacy.rewatchCount && legacy.rewatchCount > 0) {
+                for (let i = 0; i < legacy.rewatchCount; i++) {
+                  movie.watchLogs.push({
+                    id: nanoid(),
+                    movieId: movie.id,
+                    date: legacy.watchDate,
+                    note: `第${i + 2}次观看`,
+                    createdAt: now,
+                  });
+                }
+              }
+            }
           }
           return movie;
         });
@@ -342,8 +409,9 @@ export const useStore = create<AppState>()(
         try {
           const data = JSON.parse(dataStr);
           if (data.movies && data.rankings && data.quotes && data.settings) {
+            const migratedMovies = data.movies.map((m: any) => migrateMovieData(m));
             set({
-              movies: data.movies,
+              movies: migratedMovies,
               rankings: data.rankings,
               quotes: data.quotes,
               settings: data.settings,
@@ -392,6 +460,13 @@ export const useStore = create<AppState>()(
     }),
     {
       name: 'film-tracker-data',
+      migrate: (persistedState: any, version) => {
+        if (!persistedState) return persistedState;
+        if (persistedState.movies && Array.isArray(persistedState.movies)) {
+          persistedState.movies = persistedState.movies.map((m: any) => migrateMovieData(m));
+        }
+        return persistedState;
+      },
     }
   )
 );

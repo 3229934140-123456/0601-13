@@ -1,10 +1,14 @@
-import { useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { useStore } from '@/store/useStore';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { Film, Star, Clock, Award, TrendingUp, User, Users, Plus, Minus, X } from 'lucide-react';
+import { Film, Star, Clock, Award, TrendingUp, User, Users, Plus, Minus, X, Search } from 'lucide-react';
+import { Modal } from '@/components/Modal/Modal';
 
 export function DashboardPage() {
-  const { movies, quotes, rankings, addRewatch, removeLastRewatch, removeAllWatchLogs } = useStore();
+  const { movies, quotes, rankings, addRewatch, removeLastRewatch, removeAllWatchLogs, addWatchLog } = useStore();
+  const [showAddRewatchModal, setShowAddRewatchModal] = useState(false);
+  const [rewatchSearchQuery, setRewatchSearchQuery] = useState('');
+  const [selectedRewatchDate, setSelectedRewatchDate] = useState(new Date().toISOString().split('T')[0]);
 
   const watchedMovies = useMemo(() => {
     return movies.filter((m) => m.status === 'watched');
@@ -287,7 +291,16 @@ export function DashboardPage() {
 
       <div className="grid grid-cols-2 gap-6">
         <div className="p-5 bg-[#15151c] rounded-xl border border-[#252530]">
-          <h3 className="text-base font-semibold text-white mb-4">重看片单</h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-base font-semibold text-white">重看片单</h3>
+            <button
+              onClick={() => setShowAddRewatchModal(true)}
+              className="flex items-center gap-1 px-2.5 py-1 text-xs bg-amber-500/20 text-amber-400 rounded-lg hover:bg-amber-500/30 transition-colors"
+            >
+              <Plus className="w-3 h-3" />
+              添加重看
+            </button>
+          </div>
           <div className="space-y-3">
             {rewatchMovies.map((movie) => (
               <div key={movie.id} className="flex items-center gap-3 p-2 rounded-lg bg-[#1a1a24] group">
@@ -355,6 +368,96 @@ export function DashboardPage() {
           </div>
         </div>
       </div>
+
+      <Modal
+        isOpen={showAddRewatchModal}
+        onClose={() => setShowAddRewatchModal(false)}
+        title="添加重看记录"
+        size="md"
+      >
+        <div className="space-y-4">
+          <div className="flex gap-3">
+            <div className="flex-1 relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-film-500" />
+              <input
+                type="text"
+                value={rewatchSearchQuery}
+                onChange={(e) => setRewatchSearchQuery(e.target.value)}
+                placeholder="搜索已看影片..."
+                className="w-full pl-9 pr-4 py-2 bg-[#1a1a24] border border-[#2a2a35] rounded-lg text-white text-sm placeholder-film-500"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="date"
+                value={selectedRewatchDate}
+                onChange={(e) => setSelectedRewatchDate(e.target.value)}
+                className="px-3 py-2 bg-[#1a1a24] border border-[#2a2a35] rounded-lg text-white text-sm"
+              />
+            </div>
+          </div>
+
+          <div className="max-h-80 overflow-y-auto space-y-2">
+            {watchedMovies
+              .filter((m) => {
+                if (!rewatchSearchQuery.trim()) return true;
+                const q = rewatchSearchQuery.toLowerCase();
+                return m.title.toLowerCase().includes(q) || m.director.toLowerCase().includes(q);
+              })
+              .map((movie) => (
+                <div
+                  key={movie.id}
+                  className="flex items-center gap-3 p-2.5 bg-[#1a1a24] rounded-lg hover:bg-[#1f1f2b] transition-colors cursor-pointer group"
+                  onClick={() => {
+                    if (movie.watchLogs.length === 0) {
+                      addWatchLog(movie.id, selectedRewatchDate);
+                    } else {
+                      addRewatch(movie.id, selectedRewatchDate);
+                    }
+                    setShowAddRewatchModal(false);
+                    setRewatchSearchQuery('');
+                  }}
+                >
+                  {movie.poster ? (
+                    <img src={movie.poster} alt={movie.title} className="w-10 h-14 object-cover rounded" />
+                  ) : (
+                    <div className="w-10 h-14 bg-[#252530] rounded flex items-center justify-center">
+                      <Film className="w-4 h-4 text-film-500" />
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-white truncate">{movie.title}</p>
+                    <p className="text-xs text-film-400">
+                      {movie.director} · 已看 {movie.watchLogs.length} 次
+                    </p>
+                  </div>
+                  <button
+                    className="px-3 py-1.5 bg-amber-500/20 text-amber-400 text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (movie.watchLogs.length === 0) {
+                        addWatchLog(movie.id, selectedRewatchDate);
+                      } else {
+                        addRewatch(movie.id, selectedRewatchDate);
+                      }
+                      setShowAddRewatchModal(false);
+                      setRewatchSearchQuery('');
+                    }}
+                  >
+                    {movie.watchLogs.length === 0 ? '首次观看' : '添加重看'}
+                  </button>
+                </div>
+              ))}
+            {watchedMovies.filter((m) => {
+              if (!rewatchSearchQuery.trim()) return true;
+              const q = rewatchSearchQuery.toLowerCase();
+              return m.title.toLowerCase().includes(q) || m.director.toLowerCase().includes(q);
+            }).length === 0 && (
+              <p className="text-center text-film-500 py-8 text-sm">没有找到匹配的影片</p>
+            )}
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

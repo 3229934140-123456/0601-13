@@ -84,7 +84,9 @@ export function MovieForm({ movie, onClose }: MovieFormProps) {
     } else {
       addMovie({
         ...formData,
-        watchDate: watchLogs.length > 0 ? watchLogs[0].date : undefined,
+        initialWatchLogs: watchLogs.length > 0 
+          ? watchLogs.map((log) => ({ date: log.date, note: log.note }))
+          : undefined,
       });
     }
     onClose();

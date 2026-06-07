@@ -25,7 +25,12 @@ export function LibraryPage() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingMovie, setEditingMovie] = useState<Movie | null>(null);
   const [showFilters, setShowFilters] = useState(false);
-  const [showDetail, setShowDetail] = useState<Movie | null>(null);
+  const [showDetailId, setShowDetailId] = useState<string | null>(null);
+
+  const detailMovie = useMemo(() => {
+    if (!showDetailId) return null;
+    return movies.find((m) => m.id === showDetailId) || null;
+  }, [movies, showDetailId]);
 
   const allGenres = useMemo(() => {
     const genres = new Set<string>();
@@ -189,7 +194,7 @@ export function LibraryPage() {
               <div key={movie.id} style={{ animationDelay: `${index * 30}ms` }} className="animate-fade-in">
                 <MovieCard
                   movie={movie}
-                  onClick={() => setShowDetail(movie)}
+                  onClick={() => setShowDetailId(movie.id)}
                   onEdit={() => { setEditingMovie(movie); setShowAddModal(true); }}
                 />
               </div>
@@ -219,17 +224,17 @@ export function LibraryPage() {
       </Modal>
 
       <Modal
-        isOpen={!!showDetail}
-        onClose={() => setShowDetail(null)}
-        title={showDetail?.title || ''}
+        isOpen={!!detailMovie}
+        onClose={() => setShowDetailId(null)}
+        title={detailMovie?.title || ''}
         size="xl"
       >
-        {showDetail && (
+        {detailMovie && (
           <div className="space-y-6">
             <div className="flex gap-6">
               <div className="w-40 flex-shrink-0">
-                {showDetail.poster ? (
-                  <img src={showDetail.poster} alt={showDetail.title} className="w-full rounded-lg" />
+                {detailMovie.poster ? (
+                  <img src={detailMovie.poster} alt={detailMovie.title} className="w-full rounded-lg" />
                 ) : (
                   <div className="w-full aspect-[2/3] bg-[#1a1a24] rounded-lg flex items-center justify-center">
                     <span className="text-4xl">🎬</span>
@@ -238,13 +243,13 @@ export function LibraryPage() {
               </div>
               <div className="flex-1">
                 <div className="flex items-center gap-3 mb-3">
-                  <h3 className="text-xl font-bold text-white">{showDetail.title}</h3>
-                  {showDetail.originalTitle && (
-                    <span className="text-film-400 text-sm">{showDetail.originalTitle}</span>
+                  <h3 className="text-xl font-bold text-white">{detailMovie.title}</h3>
+                  {detailMovie.originalTitle && (
+                    <span className="text-film-400 text-sm">{detailMovie.originalTitle}</span>
                   )}
                 </div>
                 <div className="flex flex-wrap gap-2 mb-4">
-                  {showDetail.genres.map((g) => (
+                  {detailMovie.genres.map((g) => (
                     <span key={g} className="px-2 py-0.5 text-xs rounded bg-amber-500/20 text-amber-400">
                       {g}
                     </span>
@@ -253,25 +258,25 @@ export function LibraryPage() {
                 <div className="space-y-2 text-sm">
                   <div className="flex">
                     <span className="text-film-400 w-16">导演</span>
-                    <span className="text-white">{showDetail.director}</span>
+                    <span className="text-white">{detailMovie.director}</span>
                   </div>
                   <div className="flex">
                     <span className="text-film-400 w-16">主演</span>
-                    <span className="text-white">{showDetail.cast.join(' / ')}</span>
+                    <span className="text-white">{detailMovie.cast.join(' / ')}</span>
                   </div>
                   <div className="flex">
                     <span className="text-film-400 w-16">年份</span>
-                    <span className="text-white">{showDetail.year}</span>
+                    <span className="text-white">{detailMovie.year}</span>
                   </div>
-                  {showDetail.runtime && (
+                  {detailMovie.runtime && (
                     <div className="flex">
                       <span className="text-film-400 w-16">片长</span>
-                      <span className="text-white">{showDetail.runtime} 分钟</span>
+                      <span className="text-white">{detailMovie.runtime} 分钟</span>
                     </div>
                   )}
                   <div className="flex items-center">
                     <span className="text-film-400 w-16">评分</span>
-                    <span className="text-amber-400 font-bold text-lg">{showDetail.rating}</span>
+                    <span className="text-amber-400 font-bold text-lg">{detailMovie.rating}</span>
                   </div>
                 </div>
               </div>
@@ -280,11 +285,11 @@ export function LibraryPage() {
             <div>
               <h4 className="text-sm font-medium text-film-300 mb-3 flex items-center gap-2">
                 <Calendar className="w-4 h-4 text-amber-400" />
-                观影记录（{showDetail.watchLogs.length} 次）
+                观影记录（{detailMovie.watchLogs.length} 次）
               </h4>
-              {showDetail.watchLogs.length > 0 ? (
+              {detailMovie.watchLogs.length > 0 ? (
                 <div className="space-y-2 mb-3 max-h-40 overflow-y-auto">
-                  {[...showDetail.watchLogs]
+                  {[...detailMovie.watchLogs]
                     .sort((a, b) => b.date.localeCompare(a.date))
                     .map((log) => (
                       <div
@@ -296,7 +301,7 @@ export function LibraryPage() {
                           {log.note && <span className="text-film-400 text-xs">— {log.note}</span>}
                         </div>
                         <button
-                          onClick={() => deleteWatchLog(showDetail.id, log.id)}
+                          onClick={() => deleteWatchLog(detailMovie.id, log.id)}
                           className="p-1 text-film-500 hover:text-red-400 transition-colors"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -324,7 +329,7 @@ export function LibraryPage() {
                 <button
                   onClick={() => {
                     if (newLogDate) {
-                      addWatchLog(showDetail.id, newLogDate, newLogNote || undefined);
+                      addWatchLog(detailMovie.id, newLogDate, newLogNote || undefined);
                       setNewLogDate('');
                       setNewLogNote('');
                     }
@@ -336,24 +341,24 @@ export function LibraryPage() {
               </div>
             </div>
 
-            {showDetail.shortReview && (
+            {detailMovie.shortReview && (
               <div className="p-4 bg-[#1a1a24] rounded-lg border-l-4 border-amber-500">
-                <p className="text-sm text-film-200 italic">"{showDetail.shortReview}"</p>
+                <p className="text-sm text-film-200 italic">"{detailMovie.shortReview}"</p>
               </div>
             )}
 
-            {showDetail.longReview && (
+            {detailMovie.longReview && (
               <div>
                 <h4 className="text-sm font-medium text-film-300 mb-2">详细影评</h4>
                 <p className="text-sm text-film-200 leading-relaxed whitespace-pre-wrap">
-                  {showDetail.longReview}
+                  {detailMovie.longReview}
                 </p>
               </div>
             )}
 
             <div className="flex gap-3 pt-4 border-t border-[#252530]">
               <button
-                onClick={() => { setShowDetail(null); setEditingMovie(showDetail); setShowAddModal(true); }}
+                onClick={() => { setShowDetailId(null); setEditingMovie(detailMovie); setShowAddModal(true); }}
                 className="flex-1 py-2 bg-[#252530] text-white rounded-lg hover:bg-[#2f2f3d] transition-colors text-sm"
               >
                 编辑影片
@@ -361,8 +366,8 @@ export function LibraryPage() {
               <button
                 onClick={() => {
                   if (confirm('确定要删除这部影片吗？')) {
-                    deleteMovie(showDetail.id);
-                    setShowDetail(null);
+                    deleteMovie(detailMovie.id);
+                    setShowDetailId(null);
                   }
                 }}
                 className="px-6 py-2 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/30 transition-colors text-sm"
