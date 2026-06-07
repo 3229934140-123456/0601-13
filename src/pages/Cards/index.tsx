@@ -8,6 +8,7 @@ const templates = [
   { id: 'movie-grid', name: '影片九宫格', icon: LayoutGrid },
   { id: 'quote-card', name: '台词卡片', icon: QuoteIcon },
   { id: 'rank-list', name: '榜单海报', icon: Film },
+  { id: 'yearly-review', name: '年度复盘', icon: List },
 ];
 
 const colorSchemes = [
@@ -21,6 +22,7 @@ const sourceOptions: { value: CardSource; label: string; icon: typeof Film }[] =
   { value: 'all', label: '全部已看', icon: Film },
   { value: 'ranking', label: '指定榜单', icon: List },
   { value: 'rewatch', label: '重看片单', icon: Repeat },
+  { value: 'yearly', label: '年度复盘', icon: List },
 ];
 
 export function CardsPage() {
@@ -34,6 +36,7 @@ export function CardsPage() {
   const [cardConfig, setCardConfig] = useState<CardConfig>({
     source: 'all',
     rankingId: rankings[0]?.id || '',
+    year: new Date().getFullYear(),
     showRating: true,
     showWatchDate: false,
     showReview: false,
@@ -47,6 +50,55 @@ export function CardsPage() {
       .filter((m) => m.watchLogs.length > 1)
       .sort((a, b) => b.watchLogs.length - a.watchLogs.length);
   }, [movies]);
+
+  const yearlyStats = useMemo(() => {
+    const year = cardConfig.year || new Date().getFullYear();
+    const yearStr = String(year);
+    let watchCount = 0;
+    const movieIds = new Set<string>();
+
+    movies.forEach((movie) => {
+      movie.watchLogs.forEach((log) => {
+        if (log.date.startsWith(yearStr)) {
+          watchCount++;
+          movieIds.add(movie.id);
+        }
+      });
+    });
+
+    const yearMovies = movies.filter((m) => movieIds.has(m.id));
+    const avgRating = yearMovies.length > 0
+      ? yearMovies.reduce((sum, m) => sum + m.rating, 0) / yearMovies.length
+      : 0;
+    const rewatchCount = Math.max(0, watchCount - yearMovies.length);
+
+    const topMovies = [...yearMovies].sort((a, b) => b.rating - a.rating).slice(0, 5);
+    const rewatchList = yearMovies
+      .map((m) => {
+        const count = m.watchLogs.filter((l) => l.date.startsWith(yearStr)).length;
+        return { movie: m, count };
+      })
+      .filter((item) => item.count > 1)
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 3);
+
+    const yearQuotes = quotes.filter((q) => {
+      const movie = movies.find((m) => m.id === q.movieId);
+      if (!movie) return false;
+      return movie.watchLogs.some((l) => l.date.startsWith(yearStr));
+    }).slice(0, 2);
+
+    return {
+      year,
+      watchCount,
+      movieCount: yearMovies.length,
+      avgRating: avgRating.toFixed(1),
+      rewatchCount,
+      topMovies,
+      rewatchList,
+      yearQuotes,
+    };
+  }, [movies, quotes, cardConfig.year]);
 
   const displayMovies = useMemo(() => {
     let movieList: Movie[] = [];
@@ -63,6 +115,9 @@ export function CardsPage() {
       case 'rewatch':
         movieList = rewatchMovies;
         break;
+      case 'yearly':
+        movieList = yearlyStats.topMovies;
+        break;
       case 'all':
       default:
         movieList = movies.filter((m) => m.status === 'watched');
@@ -70,7 +125,7 @@ export function CardsPage() {
     }
     
     return movieList.slice(0, cardConfig.movieCount || 9);
-  }, [cardConfig, movies, rankings, rewatchMovies]);
+  }, [cardConfig, movies, rankings, rewatchMovies, yearlyStats.topMovies]);
 
   const selectedRankingData = rankings.find((r) => r.id === cardConfig.rankingId);
   const randomQuotes = quotes.slice(0, 3);
@@ -181,6 +236,102 @@ export function CardsPage() {
     </div>
   );
 
+  const renderYearlyReview = () => (
+    <div className="space-y-4 flex-1 overflow-y-auto">
+      <div className="grid grid-cols-2 gap-2">
+        <div className="p-3 bg-black/20 rounded-xl text-center">
+          <p className="text-2xl font-bold text-white">{yearlyStats.watchCount}</p>
+          <p className="text-[10px] text-white/60">观看次数</p>
+        </div>
+        <div className="p-3 bg-black/20 rounded-xl text-center">
+          <p className="text-2xl font-bold text-white">{yearlyStats.movieCount}</p>
+          <p className="text-[10px] text-white/60">影片数</p>
+        </div>
+        <div className="p-3 bg-black/20 rounded-xl text-center">
+          <p className={`text-2xl font-bold ${colorScheme.text}`}>{yearlyStats.avgRating}</p>
+          <p className="text-[10px] text-white/60">平均分</p>
+        </div>
+        <div className="p-3 bg-black/20 rounded-xl text-center">
+          <p className="text-2xl font-bold text-white">{yearlyStats.rewatchCount}</p>
+          <p className="text-[10px] text-white/60">重看次数</p>
+        </div>
+      </div>
+
+      <div>
+        <h4 className={`text-xs font-medium ${colorScheme.text} mb-2 flex items-center gap-1`}>
+          <Film className="w-3 h-3" />
+          年度 Top 5
+        </h4>
+        <div className="space-y-1.5">
+          {yearlyStats.topMovies.map((movie, index) => (
+            <div key={movie.id} className="flex items-center gap-2 p-1.5 bg-black/15 rounded-lg">
+              <span className={`w-5 h-5 ${colorScheme.accent} rounded-full flex items-center justify-center text-black text-[10px] font-bold flex-shrink-0`}>
+                {index + 1}
+              </span>
+              {movie.poster ? (
+                <img src={movie.poster} alt={movie.title} className="w-6 h-9 object-cover rounded flex-shrink-0" />
+              ) : (
+                <div className="w-6 h-9 bg-black/30 rounded flex-shrink-0" />
+              )}
+              <div className="flex-1 min-w-0">
+                <p className="text-white text-xs truncate font-medium">{movie.title}</p>
+                {cardConfig.showRating && (
+                  <p className={`text-[10px] ${colorScheme.text}`}>★ {movie.rating}</p>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {yearlyStats.rewatchList.length > 0 && (
+        <div>
+          <h4 className={`text-xs font-medium ${colorScheme.text} mb-2 flex items-center gap-1`}>
+            <Repeat className="w-3 h-3" />
+            重看最多
+          </h4>
+          <div className="space-y-1.5">
+            {yearlyStats.rewatchList.map(({ movie, count }) => (
+              <div key={movie.id} className="flex items-center gap-2 p-1.5 bg-black/15 rounded-lg">
+                {movie.poster ? (
+                  <img src={movie.poster} alt={movie.title} className="w-6 h-9 object-cover rounded flex-shrink-0" />
+                ) : (
+                  <div className="w-6 h-9 bg-black/30 rounded flex-shrink-0" />
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="text-white text-xs truncate">{movie.title}</p>
+                </div>
+                <span className={`${colorScheme.accent} text-black text-[10px] font-bold px-1.5 py-0.5 rounded`}>
+                  {count}刷
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {yearlyStats.yearQuotes.length > 0 && (
+        <div>
+          <h4 className={`text-xs font-medium ${colorScheme.text} mb-2 flex items-center gap-1`}>
+            <QuoteIcon className="w-3 h-3" />
+            年度台词
+          </h4>
+          <div className="space-y-2">
+            {yearlyStats.yearQuotes.map((quote) => {
+              const movie = movies.find((m) => m.id === quote.movieId);
+              return (
+                <div key={quote.id} className="p-2 bg-black/20 rounded-lg">
+                  <p className="text-white text-[11px] italic line-clamp-2">"{quote.content}"</p>
+                  <p className="text-white/50 text-[10px] mt-1">— {movie?.title}</p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <div className="h-full flex flex-col">
       <div className="flex items-center justify-between mb-6">
@@ -265,6 +416,26 @@ export function CardsPage() {
                     {rankings.map((r) => (
                       <option key={r.id} value={r.id}>{r.title} ({r.movieIds.length}部)</option>
                     ))}
+                  </select>
+                </div>
+              )}
+              
+              {cardConfig.source === 'yearly' && (
+                <div className="mt-3">
+                  <label className="block text-xs text-film-400 mb-1">选择年份</label>
+                  <select
+                    value={cardConfig.year || new Date().getFullYear()}
+                    onChange={(e) => updateConfig('year', parseInt(e.target.value))}
+                    className="w-full px-3 py-2 bg-[#1a1a24] border border-[#2a2a35] rounded-lg text-white text-sm"
+                  >
+                    {Array.from(new Set(movies.flatMap(m => m.watchLogs.map(l => l.date.split('-')[0]))))
+                      .sort((a, b) => parseInt(b) - parseInt(a))
+                      .map(year => (
+                        <option key={year} value={parseInt(year)}>{year} 年</option>
+                      ))}
+                    {!Array.from(new Set(movies.flatMap(m => m.watchLogs.map(l => l.date.split('-')[0])))).includes(String(new Date().getFullYear())) && (
+                      <option value={new Date().getFullYear()}>{new Date().getFullYear()} 年</option>
+                    )}
                   </select>
                 </div>
               )}
@@ -399,12 +570,21 @@ export function CardsPage() {
                   共 {rewatchMovies.length} 部重看影片
                 </p>
               )}
+              {cardConfig.source === 'yearly' && (
+                <p className="text-xs text-white/50 mt-1">
+                  {yearlyStats.year} 年度 · {yearlyStats.watchCount} 次观影
+                </p>
+              )}
             </div>
 
             <div className="w-full h-px bg-gradient-to-r from-transparent via-white/20 to-transparent mb-4" />
 
             <div className="flex-1 overflow-hidden">
-              {selectedTemplate === 'quote-card' ? renderQuoteCard() : renderMovieGrid()}
+              {selectedTemplate === 'quote-card' 
+                ? renderQuoteCard() 
+                : selectedTemplate === 'yearly-review'
+                ? renderYearlyReview()
+                : renderMovieGrid()}
             </div>
 
             <div className="pt-4">

@@ -63,11 +63,12 @@ export interface AppState {
 
 export type TabType = 'library' | 'calendar' | 'rating' | 'rankings' | 'quotes' | 'cards' | 'dashboard' | 'settings';
 
-export type CardSource = 'all' | 'ranking' | 'rewatch';
+export type CardSource = 'all' | 'ranking' | 'rewatch' | 'yearly';
 
 export interface CardConfig {
   source: CardSource;
   rankingId?: string;
+  year?: number;
   showRating: boolean;
   showWatchDate: boolean;
   showReview: boolean;

@@ -1,43 +1,73 @@
 import { useState, useMemo } from 'react';
 import { useStore } from '@/store/useStore';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { Film, Star, Clock, Award, TrendingUp, User, Users, Plus, Minus, X, Search } from 'lucide-react';
+import { Film, Star, Clock, Award, TrendingUp, User, Users, Plus, Minus, X, Search, ChevronDown, ChevronUp, Calendar, Edit, Eye } from 'lucide-react';
 import { Modal } from '@/components/Modal/Modal';
+import { Movie, WatchLog } from '@/types';
+
+interface MonthlyWatchItem {
+  log: WatchLog;
+  movie: Movie;
+}
 
 export function DashboardPage() {
   const { movies, quotes, rankings, addRewatch, removeLastRewatch, removeAllWatchLogs, addWatchLog } = useStore();
   const [showAddRewatchModal, setShowAddRewatchModal] = useState(false);
   const [rewatchSearchQuery, setRewatchSearchQuery] = useState('');
   const [selectedRewatchDate, setSelectedRewatchDate] = useState(new Date().toISOString().split('T')[0]);
+  const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
+  const [expandedMonth, setExpandedMonth] = useState<number | null>(null);
 
-  const watchedMovies = useMemo(() => {
-    return movies.filter((m) => m.status === 'watched');
+  const availableYears = useMemo(() => {
+    const years = new Set<number>();
+    movies.forEach((m) => {
+      m.watchLogs.forEach((log) => {
+        const year = parseInt(log.date.split('-')[0], 10);
+        if (year) years.add(year);
+      });
+    });
+    if (years.size === 0) years.add(new Date().getFullYear());
+    return Array.from(years).sort((a, b) => b - a);
   }, [movies]);
 
+  const yearWatchLogs = useMemo(() => {
+    const items: { log: WatchLog; movie: Movie }[] = [];
+    movies.forEach((movie) => {
+      movie.watchLogs.forEach((log) => {
+        if (log.date.startsWith(String(selectedYear))) {
+          items.push({ log, movie });
+        }
+      });
+    });
+    return items.sort((a, b) => b.log.date.localeCompare(a.log.date));
+  }, [movies, selectedYear]);
+
+  const yearMovies = useMemo(() => {
+    const movieIds = new Set(yearWatchLogs.map((item) => item.movie.id));
+    return movies.filter((m) => movieIds.has(m.id));
+  }, [movies, yearWatchLogs]);
+
   const stats = useMemo(() => {
-    const totalRuntime = watchedMovies.reduce((sum, m) => sum + (m.runtime || 0), 0);
-    const avgRating = watchedMovies.length > 0
-      ? watchedMovies.reduce((sum, m) => sum + m.rating, 0) / watchedMovies.length
+    const totalWatchCount = yearWatchLogs.length;
+    const totalMovies = yearMovies.length;
+    const avgRating = totalMovies > 0
+      ? yearMovies.reduce((sum, m) => sum + m.rating, 0) / totalMovies
       : 0;
-    const totalWatchLogs = movies.reduce((sum, m) => sum + m.watchLogs.length, 0);
-    const rewatchTotal = Math.max(0, totalWatchLogs - watchedMovies.length);
+    const rewatchCount = Math.max(0, totalWatchCount - totalMovies);
+    const totalRuntime = yearMovies.reduce((sum, m) => sum + (m.runtime || 0), 0);
 
     return {
-      total: movies.length,
-      watched: watchedMovies.length,
-      wish: movies.filter((m) => m.status === 'wish').length,
+      totalWatchCount,
+      totalMovies,
       avgRating: avgRating.toFixed(1),
+      rewatchCount,
       totalRuntime: Math.round(totalRuntime / 60),
-      rewatchTotal,
-      totalWatchLogs,
-      quotesCount: quotes.length,
-      rankingsCount: rankings.length,
     };
-  }, [movies, quotes, rankings, watchedMovies]);
+  }, [yearWatchLogs, yearMovies]);
 
   const genreStats = useMemo(() => {
     const genreMap = new Map<string, number>();
-    watchedMovies.forEach((movie) => {
+    yearMovies.forEach((movie) => {
       movie.genres.forEach((genre) => {
         genreMap.set(genre, (genreMap.get(genre) || 0) + 1);
       });
@@ -46,25 +76,28 @@ export function DashboardPage() {
       .map(([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value)
       .slice(0, 8);
-  }, [watchedMovies]);
+  }, [yearMovies]);
 
   const monthlyStats = useMemo(() => {
-    const year = new Date().getFullYear();
-    const months: { month: string; count: number }[] = [];
-    
+    const months: { month: string; monthNum: number; count: number }[] = [];
     for (let i = 0; i < 12; i++) {
-      const monthKey = `${year}-${String(i + 1).padStart(2, '0')}`;
-      const count = movies.reduce((sum, m) => {
-        return sum + m.watchLogs.filter((log) => log.date.startsWith(monthKey)).length;
-      }, 0);
-      months.push({ month: `${i + 1}月`, count });
+      const monthKey = `${selectedYear}-${String(i + 1).padStart(2, '0')}`;
+      const count = yearWatchLogs.filter((item) => item.log.date.startsWith(monthKey)).length;
+      months.push({ month: `${i + 1}月`, monthNum: i + 1, count });
     }
     return months;
-  }, [movies]);
+  }, [yearWatchLogs, selectedYear]);
+
+  const getMonthlyItems = (monthNum: number): MonthlyWatchItem[] => {
+    const monthKey = `${selectedYear}-${String(monthNum).padStart(2, '0')}`;
+    return yearWatchLogs
+      .filter((item) => item.log.date.startsWith(monthKey))
+      .sort((a, b) => b.log.date.localeCompare(a.log.date));
+  };
 
   const directorStats = useMemo(() => {
     const directorMap = new Map<string, number>();
-    watchedMovies.forEach((movie) => {
+    yearMovies.forEach((movie) => {
       if (movie.director) {
         directorMap.set(movie.director, (directorMap.get(movie.director) || 0) + 1);
       }
@@ -73,11 +106,11 @@ export function DashboardPage() {
       .map(([name, count]) => ({ name, count }))
       .sort((a, b) => b.count - a.count)
       .slice(0, 5);
-  }, [watchedMovies]);
+  }, [yearMovies]);
 
   const actorStats = useMemo(() => {
     const actorMap = new Map<string, number>();
-    watchedMovies.forEach((movie) => {
+    yearMovies.forEach((movie) => {
       movie.cast.forEach((actor) => {
         actorMap.set(actor, (actorMap.get(actor) || 0) + 1);
       });
@@ -86,48 +119,62 @@ export function DashboardPage() {
       .map(([name, count]) => ({ name, count }))
       .sort((a, b) => b.count - a.count)
       .slice(0, 5);
-  }, [watchedMovies]);
-
-  const countryStats = useMemo(() => {
-    const countryMap = new Map<string, number>();
-    watchedMovies.forEach((movie) => {
-      const country = movie.country || '未知';
-      countryMap.set(country, (countryMap.get(country) || 0) + 1);
-    });
-    return Array.from(countryMap.entries())
-      .map(([name, value]) => ({ name, value }))
-      .sort((a, b) => b.value - a.value);
-  }, [watchedMovies]);
+  }, [yearMovies]);
 
   const rewatchMovies = useMemo(() => {
-    return movies
-      .filter((m) => m.watchLogs.length > 1)
-      .sort((a, b) => b.watchLogs.length - a.watchLogs.length)
+    const movieRewatchCount = new Map<string, number>();
+    yearWatchLogs.forEach((item) => {
+      const current = movieRewatchCount.get(item.movie.id) || 0;
+      movieRewatchCount.set(item.movie.id, current + 1);
+    });
+    return yearMovies
+      .filter((m) => (movieRewatchCount.get(m.id) || 0) > 1)
+      .map((m) => ({ movie: m, count: movieRewatchCount.get(m.id) || 0 }))
+      .sort((a, b) => b.count - a.count)
       .slice(0, 5);
+  }, [yearMovies, yearWatchLogs]);
+
+  const watchedMoviesAll = useMemo(() => {
+    return movies.filter((m) => m.status === 'watched');
   }, [movies]);
 
   const GENRE_COLORS = ['#D4AF37', '#C4A030', '#B08828', '#9A7420', '#846018', '#6E4C10', '#583808', '#483006'];
-  const COUNTRY_COLORS = ['#D4AF37', '#8B7355', '#6B8E6B', '#8B6914', '#A0522D'];
 
   return (
     <div className="h-full flex flex-col overflow-y-auto">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-white" style={{ fontFamily: 'Playfair Display, serif' }}>
-          数据总览
-        </h1>
-        <p className="text-sm text-film-400 mt-1">
-          全面了解你的观影数据
-        </p>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-white" style={{ fontFamily: 'Playfair Display, serif' }}>
+            数据总览
+          </h1>
+          <p className="text-sm text-film-400 mt-1">
+            全面了解你的观影数据
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <select
+            value={selectedYear}
+            onChange={(e) => {
+              setSelectedYear(parseInt(e.target.value, 10));
+              setExpandedMonth(null);
+            }}
+            className="px-4 py-2 bg-[#15151c] border border-[#252530] rounded-lg text-white text-sm"
+          >
+            {availableYears.map((year) => (
+              <option key={year} value={year}>{year} 年度复盘</option>
+            ))}
+          </select>
+        </div>
       </div>
 
       <div className="grid grid-cols-4 gap-4 mb-6">
         <div className="p-4 bg-[#15151c] rounded-xl border border-[#252530] card-hover">
           <div className="flex items-center justify-between mb-2">
             <Film className="w-5 h-5 text-amber-400" />
-            <span className="text-xs text-film-500">总片数</span>
+            <span className="text-xs text-film-500">观看次数</span>
           </div>
-          <p className="text-3xl font-bold text-gold-gradient">{stats.total}</p>
-          <p className="text-xs text-film-400 mt-1">已看 {stats.watched} 部</p>
+          <p className="text-3xl font-bold text-gold-gradient">{stats.totalWatchCount}</p>
+          <p className="text-xs text-film-400 mt-1">{stats.totalMovies} 部影片</p>
         </div>
         <div className="p-4 bg-[#15151c] rounded-xl border border-[#252530] card-hover">
           <div className="flex items-center justify-between mb-2">
@@ -135,7 +182,7 @@ export function DashboardPage() {
             <span className="text-xs text-film-500">平均分</span>
           </div>
           <p className="text-3xl font-bold text-gold-gradient">{stats.avgRating}</p>
-          <p className="text-xs text-film-400 mt-1">基于 {watchedMovies.length} 部评分</p>
+          <p className="text-xs text-film-400 mt-1">基于 {stats.totalMovies} 部评分</p>
         </div>
         <div className="p-4 bg-[#15151c] rounded-xl border border-[#252530] card-hover">
           <div className="flex items-center justify-between mb-2">
@@ -150,8 +197,8 @@ export function DashboardPage() {
             <Award className="w-5 h-5 text-amber-400" />
             <span className="text-xs text-film-500">重看次数</span>
           </div>
-          <p className="text-3xl font-bold text-gold-gradient">{stats.rewatchTotal}</p>
-          <p className="text-xs text-film-400 mt-1">共 {rewatchMovies.length} 部影片 · {stats.totalWatchLogs} 次观看</p>
+          <p className="text-3xl font-bold text-gold-gradient">{stats.rewatchCount}</p>
+          <p className="text-xs text-film-400 mt-1">共 {rewatchMovies.length} 部影片重看</p>
         </div>
       </div>
 
@@ -159,11 +206,20 @@ export function DashboardPage() {
         <div className="col-span-2 p-5 bg-[#15151c] rounded-xl border border-[#252530]">
           <h3 className="text-base font-semibold text-white mb-4 flex items-center gap-2">
             <TrendingUp className="w-4 h-4 text-amber-400" />
-            月度观影趋势
+            {selectedYear}年月度观影趋势
+            <span className="text-xs text-film-500 font-normal ml-2">点击月份查看影片</span>
           </h3>
           <div className="h-56">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={monthlyStats}>
+              <BarChart
+                data={monthlyStats}
+                onClick={(data) => {
+                  if (data && data.activePayload && data.activePayload[0]) {
+                    const monthNum = data.activePayload[0].payload.monthNum;
+                    setExpandedMonth(expandedMonth === monthNum ? null : monthNum);
+                  }
+                }}
+              >
                 <CartesianGrid strokeDasharray="3 3" stroke="#252530" vertical={false} />
                 <XAxis dataKey="month" stroke="#666" tick={{ fill: '#888', fontSize: 12 }} />
                 <YAxis stroke="#666" tick={{ fill: '#888', fontSize: 12 }} />
@@ -180,6 +236,47 @@ export function DashboardPage() {
               </BarChart>
             </ResponsiveContainer>
           </div>
+
+          {expandedMonth && (
+            <div className="mt-4 pt-4 border-t border-[#252530]">
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="text-sm font-medium text-amber-400 flex items-center gap-2">
+                  <Calendar className="w-4 h-4" />
+                  {selectedYear}年{expandedMonth}月 · {getMonthlyItems(expandedMonth).length} 次观看
+                </h4>
+                <button
+                  onClick={() => setExpandedMonth(null)}
+                  className="text-xs text-film-400 hover:text-white transition-colors"
+                >
+                  收起
+                </button>
+              </div>
+              <div className="max-h-64 overflow-y-auto space-y-2">
+                {getMonthlyItems(expandedMonth).map((item) => (
+                  <div
+                    key={item.log.id}
+                    className="flex items-center gap-3 p-2.5 bg-[#1a1a24] rounded-lg group"
+                  >
+                    {item.movie.poster ? (
+                      <img src={item.movie.poster} alt={item.movie.title} className="w-8 h-12 object-cover rounded" />
+                    ) : (
+                      <div className="w-8 h-12 bg-[#252530] rounded" />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-medium text-white truncate">{item.movie.title}</p>
+                        <span className="text-amber-400 text-xs font-bold">{item.movie.rating}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-xs text-film-400 mt-0.5">
+                        <span>{item.log.date}</span>
+                        {item.log.note && <span className="truncate">· {item.log.note}</span>}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="p-5 bg-[#15151c] rounded-xl border border-[#252530]">
@@ -245,7 +342,7 @@ export function DashboardPage() {
                   <div className="h-1.5 bg-[#252530] rounded-full overflow-hidden">
                     <div
                       className="h-full bg-gradient-to-r from-amber-500 to-amber-400 rounded-full"
-                      style={{ width: `${(director.count / directorStats[0].count) * 100}%` }}
+                      style={{ width: `${directorStats[0] ? (director.count / directorStats[0].count) * 100 : 0}%` }}
                     />
                   </div>
                 </div>
@@ -276,7 +373,7 @@ export function DashboardPage() {
                   <div className="h-1.5 bg-[#252530] rounded-full overflow-hidden">
                     <div
                       className="h-full bg-gradient-to-r from-amber-500 to-amber-400 rounded-full"
-                      style={{ width: `${(actor.count / actorStats[0].count) * 100}%` }}
+                      style={{ width: `${actorStats[0] ? (actor.count / actorStats[0].count) * 100 : 0}%` }}
                     />
                   </div>
                 </div>
@@ -292,7 +389,7 @@ export function DashboardPage() {
       <div className="grid grid-cols-2 gap-6">
         <div className="p-5 bg-[#15151c] rounded-xl border border-[#252530]">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-base font-semibold text-white">重看片单</h3>
+            <h3 className="text-base font-semibold text-white">年度重看影片</h3>
             <button
               onClick={() => setShowAddRewatchModal(true)}
               className="flex items-center gap-1 px-2.5 py-1 text-xs bg-amber-500/20 text-amber-400 rounded-lg hover:bg-amber-500/30 transition-colors"
@@ -302,7 +399,7 @@ export function DashboardPage() {
             </button>
           </div>
           <div className="space-y-3">
-            {rewatchMovies.map((movie) => (
+            {rewatchMovies.map(({ movie, count }) => (
               <div key={movie.id} className="flex items-center gap-3 p-2 rounded-lg bg-[#1a1a24] group">
                 {movie.poster ? (
                   <img src={movie.poster} alt={movie.title} className="w-10 h-14 object-cover rounded" />
@@ -322,7 +419,7 @@ export function DashboardPage() {
                     <Minus className="w-3 h-3" />
                   </button>
                   <div className="text-center min-w-[40px]">
-                    <p className="text-amber-400 font-bold text-sm">{movie.watchLogs.length}</p>
+                    <p className="text-amber-400 font-bold text-sm">{count}</p>
                     <p className="text-xs text-film-500">次观看</p>
                   </div>
                   <button
@@ -353,18 +450,31 @@ export function DashboardPage() {
         </div>
 
         <div className="p-5 bg-[#15151c] rounded-xl border border-[#252530]">
-          <h3 className="text-base font-semibold text-white mb-4">国家/地区分布</h3>
+          <h3 className="text-base font-semibold text-white mb-4">年度 Top 5 高分</h3>
           <div className="space-y-3">
-            {countryStats.map((country, index) => (
-              <div key={country.name} className="flex items-center gap-3">
-                <div
-                  className="w-3 h-3 rounded-full"
-                  style={{ backgroundColor: COUNTRY_COLORS[index % COUNTRY_COLORS.length] }}
-                />
-                <span className="flex-1 text-sm text-white">{country.name}</span>
-                <span className="text-sm text-film-400">{country.value} 部</span>
-              </div>
-            ))}
+            {[...yearMovies]
+              .sort((a, b) => b.rating - a.rating)
+              .slice(0, 5)
+              .map((movie, index) => (
+                <div key={movie.id} className="flex items-center gap-3 p-2 rounded-lg bg-[#1a1a24]">
+                  <div className="w-6 h-6 rounded-full bg-amber-500/20 flex items-center justify-center text-amber-400 text-xs font-bold flex-shrink-0">
+                    {index + 1}
+                  </div>
+                  {movie.poster ? (
+                    <img src={movie.poster} alt={movie.title} className="w-8 h-12 object-cover rounded" />
+                  ) : (
+                    <div className="w-8 h-12 bg-[#252530] rounded" />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-white truncate">{movie.title}</p>
+                    <p className="text-xs text-film-400">{movie.director}</p>
+                  </div>
+                  <span className="text-amber-400 font-bold text-sm">{movie.rating}</span>
+                </div>
+              ))}
+            {yearMovies.length === 0 && (
+              <p className="text-center text-film-500 py-4 text-sm">暂无数据</p>
+            )}
           </div>
         </div>
       </div>
@@ -398,7 +508,7 @@ export function DashboardPage() {
           </div>
 
           <div className="max-h-80 overflow-y-auto space-y-2">
-            {watchedMovies
+            {watchedMoviesAll
               .filter((m) => {
                 if (!rewatchSearchQuery.trim()) return true;
                 const q = rewatchSearchQuery.toLowerCase();
@@ -448,7 +558,7 @@ export function DashboardPage() {
                   </button>
                 </div>
               ))}
-            {watchedMovies.filter((m) => {
+            {watchedMoviesAll.filter((m) => {
               if (!rewatchSearchQuery.trim()) return true;
               const q = rewatchSearchQuery.toLowerCase();
               return m.title.toLowerCase().includes(q) || m.director.toLowerCase().includes(q);

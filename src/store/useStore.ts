@@ -460,11 +460,21 @@ export const useStore = create<AppState>()(
     }),
     {
       name: 'film-tracker-data',
+      version: 2,
       migrate: (persistedState: any, version) => {
         if (!persistedState) return persistedState;
-        if (persistedState.movies && Array.isArray(persistedState.movies)) {
-          persistedState.movies = persistedState.movies.map((m: any) => migrateMovieData(m));
+
+        if (version === 0 || version === 1) {
+          if (persistedState.movies && Array.isArray(persistedState.movies)) {
+            persistedState.movies = persistedState.movies.map((m: any) => migrateMovieData(m));
+          }
         }
+
+        if (!persistedState.movies) persistedState.movies = [];
+        if (!persistedState.rankings) persistedState.rankings = [];
+        if (!persistedState.quotes) persistedState.quotes = [];
+        if (!persistedState.settings) persistedState.settings = mockSettings;
+
         return persistedState;
       },
     }

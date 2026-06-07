@@ -1,16 +1,24 @@
 import { useState, useMemo } from 'react';
 import { useStore } from '@/store/useStore';
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Film, TrendingUp, Plus, Search, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Film, TrendingUp, Plus, Search, X, Eye, Edit, Calendar, Trash2 } from 'lucide-react';
 import { Movie, WatchLog } from '@/types';
 import { Modal } from '@/components/Modal/Modal';
+import { MovieForm } from '@/components/MovieForm/MovieForm';
 
 export function CalendarPage() {
-  const { movies, addWatchLog, deleteWatchLog } = useStore();
+  const { movies, addWatchLog, deleteWatchLog, deleteMovie } = useStore();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'month' | 'heatmap'>('month');
   const [showAddModal, setShowAddModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [detailMovieId, setDetailMovieId] = useState<string | null>(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+
+  const detailMovie = useMemo(() => {
+    if (!detailMovieId) return null;
+    return movies.find((m) => m.id === detailMovieId) || null;
+  }, [movies, detailMovieId]);
 
   const allWatchLogs = useMemo(() => {
     const logs: WatchLog[] = [];
@@ -310,29 +318,59 @@ export function CalendarPage() {
                     const movie = getMovieById(log.movieId);
                     if (!movie) return null;
                     
+                    const sortedLogs = [...movie.watchLogs].sort((a, b) => a.date.localeCompare(b.date));
+                    const watchIndex = sortedLogs.findIndex(l => l.id === log.id) + 1;
                     const watchCount = movie.watchLogs.length;
                     
                     return (
-                      <div key={log.id} className="flex gap-3 p-2 rounded-lg bg-[#1a1a24] group">
+                      <div key={log.id} className="flex gap-3 p-3 rounded-lg bg-[#1a1a24] group">
                         {movie.poster ? (
-                          <img src={movie.poster} alt={movie.title} className="w-12 h-16 object-cover rounded" />
+                          <img src={movie.poster} alt={movie.title} className="w-12 h-16 object-cover rounded flex-shrink-0" />
                         ) : (
-                          <div className="w-12 h-16 bg-[#252530] rounded flex items-center justify-center">
+                          <div className="w-12 h-16 bg-[#252530] rounded flex items-center justify-center flex-shrink-0">
                             <Film className="w-6 h-6 text-film-500" />
                           </div>
                         )}
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-white truncate">{movie.title}</p>
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-medium text-white truncate">{movie.title}</p>
+                            <span className="text-amber-400 text-xs font-bold flex-shrink-0">★ {movie.rating}</span>
+                          </div>
                           <p className="text-xs text-film-400">{movie.year} · {movie.director}</p>
-                          <p className="text-xs text-amber-400 mt-0.5">★ {movie.rating}</p>
                           {watchCount > 1 && (
                             <span className="inline-block mt-1 px-1.5 py-0.5 text-[10px] bg-amber-500/20 text-amber-400 rounded">
-                              第 {movie.watchLogs.findIndex(l => l.id === log.id) + 1} 遍观看
+                              第 {watchIndex} 遍观看
                             </span>
                           )}
                           {log.note && (
-                            <p className="text-xs text-film-400 mt-1 italic">"{log.note}"</p>
+                            <p className="text-xs text-film-300 mt-1.5 italic">"{log.note}"</p>
                           )}
+                          {movie.shortReview && !log.note && (
+                            <p className="text-xs text-film-400 mt-1.5 line-clamp-2">
+                              💬 {movie.shortReview}
+                            </p>
+                          )}
+                          <div className="flex items-center gap-1 mt-2">
+                            <button
+                              onClick={() => {
+                                setDetailMovieId(movie.id);
+                              }}
+                              className="flex items-center gap-1 px-2 py-1 text-[10px] bg-[#252530] text-film-300 rounded hover:bg-[#2f2f3d] hover:text-white transition-colors"
+                            >
+                              <Eye className="w-3 h-3" />
+                              详情
+                            </button>
+                            <button
+                              onClick={() => {
+                                setDetailMovieId(movie.id);
+                                setShowEditModal(true);
+                              }}
+                              className="flex items-center gap-1 px-2 py-1 text-[10px] bg-amber-500/20 text-amber-400 rounded hover:bg-amber-500/30 transition-colors"
+                            >
+                              <Edit className="w-3 h-3" />
+                              编辑
+                            </button>
+                          </div>
                         </div>
                         <button
                           onClick={() => handleDeleteLog(log.id, movie.id)}
@@ -458,6 +496,154 @@ export function CalendarPage() {
             )}
           </div>
         </div>
+      </Modal>
+
+      <Modal
+        isOpen={!!detailMovie && !showEditModal}
+        onClose={() => setDetailMovieId(null)}
+        title={detailMovie?.title || ''}
+        size="xl"
+      >
+        {detailMovie && (
+          <div className="space-y-6">
+            <div className="flex gap-6">
+              <div className="w-40 flex-shrink-0">
+                {detailMovie.poster ? (
+                  <img src={detailMovie.poster} alt={detailMovie.title} className="w-full rounded-lg" />
+                ) : (
+                  <div className="w-full aspect-[2/3] bg-[#1a1a24] rounded-lg flex items-center justify-center">
+                    <span className="text-4xl">🎬</span>
+                  </div>
+                )}
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center gap-3 mb-3">
+                  <h3 className="text-xl font-bold text-white">{detailMovie.title}</h3>
+                  {detailMovie.originalTitle && (
+                    <span className="text-film-400 text-sm">{detailMovie.originalTitle}</span>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-2 mb-4">
+                  {detailMovie.genres.map((g) => (
+                    <span key={g} className="px-2 py-0.5 text-xs rounded bg-amber-500/20 text-amber-400">
+                      {g}
+                    </span>
+                  ))}
+                </div>
+                <div className="space-y-2 text-sm">
+                  <div className="flex">
+                    <span className="text-film-400 w-16">导演</span>
+                    <span className="text-white">{detailMovie.director}</span>
+                  </div>
+                  <div className="flex">
+                    <span className="text-film-400 w-16">主演</span>
+                    <span className="text-white">{detailMovie.cast.join(' / ')}</span>
+                  </div>
+                  <div className="flex">
+                    <span className="text-film-400 w-16">年份</span>
+                    <span className="text-white">{detailMovie.year}</span>
+                  </div>
+                  {detailMovie.runtime && (
+                    <div className="flex">
+                      <span className="text-film-400 w-16">片长</span>
+                      <span className="text-white">{detailMovie.runtime} 分钟</span>
+                    </div>
+                  )}
+                  <div className="flex items-center">
+                    <span className="text-film-400 w-16">评分</span>
+                    <span className="text-amber-400 font-bold text-lg">{detailMovie.rating}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <h4 className="text-sm font-medium text-film-300 mb-3 flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-amber-400" />
+                观影记录（{detailMovie.watchLogs.length} 次）
+              </h4>
+              {detailMovie.watchLogs.length > 0 ? (
+                <div className="space-y-2 mb-3 max-h-40 overflow-y-auto">
+                  {[...detailMovie.watchLogs]
+                    .sort((a, b) => b.date.localeCompare(a.date))
+                    .map((log) => (
+                      <div
+                        key={log.id}
+                        className="flex items-center justify-between p-2.5 bg-[#1a1a24] rounded-lg text-sm"
+                      >
+                        <div className="flex items-center gap-3">
+                          <span className="text-amber-400 font-medium">{log.date}</span>
+                          {log.note && <span className="text-film-400 text-xs">— {log.note}</span>}
+                        </div>
+                        <button
+                          onClick={() => deleteWatchLog(detailMovie.id, log.id)}
+                          className="p-1 text-film-500 hover:text-red-400 transition-colors"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                </div>
+              ) : (
+                <p className="text-film-500 text-sm mb-3">暂无观影记录</p>
+              )}
+            </div>
+
+            {detailMovie.shortReview && (
+              <div className="p-4 bg-[#1a1a24] rounded-lg border-l-4 border-amber-500">
+                <p className="text-sm text-film-200 italic">"{detailMovie.shortReview}"</p>
+              </div>
+            )}
+
+            {detailMovie.longReview && (
+              <div>
+                <h4 className="text-sm font-medium text-film-300 mb-2">详细影评</h4>
+                <p className="text-sm text-film-200 leading-relaxed whitespace-pre-wrap">
+                  {detailMovie.longReview}
+                </p>
+              </div>
+            )}
+
+            <div className="flex gap-3 pt-4 border-t border-[#252530]">
+              <button
+                onClick={() => setShowEditModal(true)}
+                className="flex-1 py-2 bg-[#252530] text-white rounded-lg hover:bg-[#2f2f3d] transition-colors text-sm"
+              >
+                编辑影片
+              </button>
+              <button
+                onClick={() => {
+                  if (confirm('确定要删除这部影片吗？')) {
+                    deleteMovie(detailMovie.id);
+                    setDetailMovieId(null);
+                  }
+                }}
+                className="px-6 py-2 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/30 transition-colors text-sm"
+              >
+                删除
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      <Modal
+        isOpen={showEditModal && !!detailMovie}
+        onClose={() => {
+          setShowEditModal(false);
+          setDetailMovieId(null);
+        }}
+        title="编辑影片"
+        size="lg"
+      >
+        {detailMovie && (
+          <MovieForm
+            movie={detailMovie}
+            onClose={() => {
+              setShowEditModal(false);
+            }}
+          />
+        )}
       </Modal>
     </div>
   );
